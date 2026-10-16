@@ -27,6 +27,8 @@ Requirements: a JDK 17 or newer (developed on JDK 25) and PowerShell on Windows.
 .\run.ps1     # starts the game
 ```
 
+On macOS or Linux, run `./run.sh` instead. It builds the game on first use and starts it. Right-click (marching orders) is ctrl-click or a two-finger click on a Mac trackpad.
+
 To compile manually: `javac -d out\classes (Get-ChildItem src -Recurse -Filter *.java).FullName`, copy `res\*` into `out\classes`, then run `java -cp out\classes mapgame.Main`.
 
 ## How to play
