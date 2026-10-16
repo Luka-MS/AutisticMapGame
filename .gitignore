@@ -1,0 +1,42 @@
+# Build output (created by build.ps1)
+out/
+*.class
+*.jar
+
+# Source data downloaded by tools/prepare_data.py (res/mapgame/data/world.txt IS tracked)
+tools/cache/
+
+# Secrets and credentials - never commit these
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+id_rsa*
+id_ed25519*
+secrets.*
+credentials*
+*.token
+
+# IDE / editor files
+.idea/
+*.iml
+.vscode/
+.classpath
+.project
+.settings/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs and temp files
+*.log
+hs_err_pid*
+*.tmp
+__pycache__/
+*.pyc
