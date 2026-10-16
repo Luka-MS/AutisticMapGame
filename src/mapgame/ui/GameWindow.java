@@ -5,7 +5,13 @@ import java.awt.CardLayout;
 import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.Font;
+import java.awt.GridLayout;
 import java.awt.event.ActionEvent;
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import javax.swing.AbstractAction;
@@ -15,6 +21,7 @@ import javax.swing.BoxLayout;
 import javax.swing.ButtonGroup;
 import javax.swing.JButton;
 import javax.swing.JComponent;
+import javax.swing.JFileChooser;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
@@ -27,11 +34,13 @@ import javax.swing.KeyStroke;
 import javax.swing.SwingUtilities;
 import javax.swing.SwingWorker;
 import javax.swing.Timer;
+import javax.swing.filechooser.FileNameExtensionFilter;
 import mapgame.model.Army;
 import mapgame.model.Country;
 import mapgame.model.MapKind;
 import mapgame.model.Province;
 import mapgame.sim.Game;
+import mapgame.sim.SaveFile;
 
 public final class GameWindow extends JFrame {
     /** Real milliseconds per in-game day for speeds 1..5 (index 0 = paused). */
@@ -45,6 +54,7 @@ public final class GameWindow extends JFrame {
             groupsBtn = button("Army groups / fronts (G)"),
             warBtn = button("Declare war"), totalWarBtn = button("Declare TOTAL war (no peace)"),
             peaceBtn = button("Propose peace"), menuBtn = button("Main menu"),
+            saveBtn = button("Save (F5)"), loadBtn = button("Load (F9)"),
             modeBtn = button("Map mode: Political (M)");
     private final List<JToggleButton> speedBtns = new ArrayList<>();
     private JSplitPane sideSplit;
@@ -53,11 +63,16 @@ public final class GameWindow extends JFrame {
     private final JPanel root = new JPanel(cards);
     private final MainMenuPanel menu;
 
+    private static final Path SAVE_DIR = Paths.get("saves");
+    private static final Path QUICKSAVE = SAVE_DIR.resolve("quicksave" + SaveFile.EXTENSION);
+    private static final Path AUTOSAVE = SAVE_DIR.resolve("autosave" + SaveFile.EXTENSION);
+
     private Game game;
     private boolean started;
     private boolean inMenu = true;
     private boolean dividerPlaced;
     private int speed;
+    private int lastAutosaveYear;
     private double acc;
     private long lastNanos = System.nanoTime();
     private long lastHud;
@@ -72,6 +87,11 @@ public final class GameWindow extends JFrame {
             @Override
             public void play(MapKind kind, long seed) {
                 startNewGame(kind, seed);
+            }
+
+            @Override
+            public void load() {
+                loadWithChooser();
             }
 
             @Override
@@ -96,6 +116,8 @@ public final class GameWindow extends JFrame {
 
         startBtn.addActionListener(e -> startGame());
         menuBtn.addActionListener(e -> showMenu());
+        saveBtn.addActionListener(e -> saveWithChooser());
+        loadBtn.addActionListener(e -> loadWithChooser());
         modeBtn.addActionListener(e -> toggleMode());
         groupsBtn.addActionListener(e -> showGroups());
         recruitBtn.addActionListener(e -> {
@@ -165,7 +187,7 @@ public final class GameWindow extends JFrame {
             @Override
             protected void done() {
                 try {
-                    installGame(get());
+                    installGame(get(), false);
                 } catch (Exception ex) {
                     menu.setBusy(null);
                     JOptionPane.showMessageDialog(GameWindow.this, "Could not create the world:\n" + ex.getCause(),
@@ -175,22 +197,110 @@ public final class GameWindow extends JFrame {
         }.execute();
     }
 
-    private void installGame(Game g) {
+    private void installGame(Game g, boolean restored) {
         game = g;
         game.logSink = s -> {
             logArea.append(s + "\n");
             logArea.setCaretPosition(logArea.getDocument().getLength());
         };
-        started = false;
+        started = restored && g.player != null;
         acc = 0;
+        lastAutosaveYear = g.day / 360;
         logArea.setText("");
         setSpeed(0);
         groupDialog.bind(game);
         showGame();
         map.setGame(game);
-        logArea.append("Pick a nation: click any coloured province, then press Start.\n");
-        logArea.append("Left-drag: pan. Wheel: zoom. Right-click: move selected army.\n");
+        if (started) {
+            map.centerOn(game.player.capital);
+            game.log("Game loaded: you lead " + game.player.name + ". Press Space to continue.");
+        } else {
+            logArea.append("Pick a nation: click any coloured province, then press Start.\n");
+            logArea.append("Left-drag: pan. Wheel: zoom. Right-click: move selected army.\n");
+        }
         refresh();
+    }
+
+    // ---------------------------------------------------------------- save / load
+
+    private JFileChooser chooser() {
+        JFileChooser fc = new JFileChooser(SAVE_DIR.toAbsolutePath().toFile());
+        fc.setFileFilter(new FileNameExtensionFilter("Map Game saves (*" + SaveFile.EXTENSION + ")", "sav"));
+        return fc;
+    }
+
+    private void saveWithChooser() {
+        if (game == null) return;
+        try {
+            Files.createDirectories(SAVE_DIR);
+        } catch (IOException ignored) {
+            // the chooser will simply open somewhere else
+        }
+        JFileChooser fc = chooser();
+        String nation = started ? game.player.name : "world";
+        fc.setSelectedFile(new File(fc.getCurrentDirectory(), nation + " " + (1900 + game.day / 360) + SaveFile.EXTENSION));
+        if (fc.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) return;
+        Path file = fc.getSelectedFile().toPath();
+        if (!file.getFileName().toString().endsWith(SaveFile.EXTENSION)) file = file.resolveSibling(file.getFileName() + SaveFile.EXTENSION);
+        if (Files.exists(file) && JOptionPane.showConfirmDialog(this, "Overwrite " + file.getFileName() + "?", "Save game",
+                JOptionPane.YES_NO_OPTION) != JOptionPane.YES_OPTION) return;
+        saveTo(file);
+    }
+
+    private void saveTo(Path file) {
+        if (game == null) return;
+        try {
+            SaveFile.save(game, file);
+            game.log("Game saved: " + file.getFileName());
+        } catch (IOException ex) {
+            JOptionPane.showMessageDialog(this, "Could not save the game:\n" + ex.getMessage(), "Save failed", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    private void quickSave() {
+        if (!inMenu) saveTo(QUICKSAVE);
+    }
+
+    private void loadWithChooser() {
+        JFileChooser fc = chooser();
+        if (fc.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) loadFrom(fc.getSelectedFile().toPath());
+    }
+
+    private void quickLoad() {
+        if (Files.exists(QUICKSAVE)) loadFrom(QUICKSAVE);
+        else if (game != null) game.log("No quick save yet. Press F5 to create one.");
+    }
+
+    /** Loads in the background (the map is recreated), then continues the game. */
+    private void loadFrom(Path file) {
+        menu.setBusy("Loading " + file.getFileName() + "...");
+        new SwingWorker<Game, Void>() {
+            @Override
+            protected Game doInBackground() throws IOException {
+                return SaveFile.load(file);
+            }
+
+            @Override
+            protected void done() {
+                try {
+                    installGame(get(), true);
+                } catch (Exception ex) {
+                    menu.setBusy(null);
+                    Throwable cause = ex.getCause() != null ? ex.getCause() : ex;
+                    JOptionPane.showMessageDialog(GameWindow.this, "Could not load " + file.getFileName() + ":\n" + cause.getMessage(),
+                            "Load failed", JOptionPane.ERROR_MESSAGE);
+                }
+            }
+        }.execute();
+    }
+
+    private void autosave() {
+        try {
+            SaveFile.save(game, AUTOSAVE);
+            game.log("Autosaved.");
+        } catch (IOException ex) {
+            game.log("Autosave failed: " + ex.getMessage());
+        }
     }
 
     private void showGroups() {
@@ -274,7 +384,9 @@ public final class GameWindow extends JFrame {
         JPanel bottom = new JPanel(new BorderLayout(0, 6));
         bottom.setBorder(BorderFactory.createEmptyBorder(4, 8, 8, 8));
         bottom.add(new JScrollPane(logArea), BorderLayout.CENTER);
-        bottom.add(menuBtn, BorderLayout.SOUTH);
+        JPanel bottomButtons = new JPanel(new GridLayout(1, 3, 4, 0));
+        for (JButton b : new JButton[] {saveBtn, loadBtn, menuBtn}) bottomButtons.add(b);
+        bottom.add(bottomButtons, BorderLayout.SOUTH);
         bottom.setMinimumSize(new Dimension(300, 90));
 
         // Vertical splitter: dragging the divider up or down resizes the log.
@@ -297,6 +409,8 @@ public final class GameWindow extends JFrame {
         bind("X", this::splitSelected);
         bind("C", this::mergeSelected);
         bind("G", this::showGroups);
+        bind("F5", this::quickSave);
+        bind("F9", this::quickLoad);
         bind("ESCAPE", map::clearSelection);
         for (String k : new String[] {"LEFT", "A"}) bind(k, () -> map.pan(60, 0));
         for (String k : new String[] {"RIGHT", "D"}) bind(k, () -> map.pan(-60, 0));
@@ -352,6 +466,10 @@ public final class GameWindow extends JFrame {
                 steps++;
             }
             if (steps == 10) acc = 0;
+            if (game.day / 360 > lastAutosaveYear) {
+                lastAutosaveYear = game.day / 360;
+                autosave();
+            }
             checkEnd();
         }
         map.frame();

@@ -31,10 +31,15 @@ public final class Game {
     public static final int OCCUPY_DAYS = 4;
     public static final int MIN_SPLIT = 200;
     public static final int TRUCE_DAYS = 720;
+    /** Share of the loser's provinces a winner may take in a normal peace deal. */
+    public static final double PEACE_SHARE = 0.35;
     private static final String[] MONTHS = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
 
     public final World world;
     public final Random rnd;
+    /** Map type and seed: together they recreate the exact same world when loading a save. */
+    public final MapKind kind;
+    public final long seed;
     public final List<Army> armies = new ArrayList<>();
     /** The human player's nation; null while choosing (or when running AI-only). */
     public Country player;
@@ -43,23 +48,25 @@ public final class Game {
     public boolean mapDirty = true;
     public Consumer<String> logSink = s -> { };
 
-    private final Map<Long, Integer> wars = new HashMap<>();
-    private final Set<Long> totalWars = new HashSet<>();
+    final Map<Long, Integer> wars = new HashMap<>();
+    final Set<Long> totalWars = new HashSet<>();
     public final List<ArmyGroup> groups = new ArrayList<>();
-    private int nextGroupId = 1;
-    private int nextArmyId = 1;
+    int nextGroupId = 1;
+    int nextArmyId = 1;
 
     public Game(long seed) {
-        this(MapGenerator.generate(seed), seed);
+        this(MapGenerator.generate(seed), seed, MapKind.RANDOM);
     }
 
     /** Builds a game on the given map type (random or real geography). */
     public static Game create(MapKind kind, long seed) {
-        return kind == MapKind.RANDOM ? new Game(seed) : new Game(RealMapGenerator.generate(kind, seed), seed);
+        return kind == MapKind.RANDOM ? new Game(seed) : new Game(RealMapGenerator.generate(kind, seed), seed, kind);
     }
 
-    public Game(World world, long seed) {
+    private Game(World world, long seed, MapKind kind) {
         this.world = world;
+        this.kind = kind;
+        this.seed = seed;
         this.rnd = new Random(seed ^ 0x9E3779B97F4A7C15L);
         for (Country c : world.countries) {
             c.gold = 300;
@@ -67,9 +74,10 @@ public final class Game {
             // The starting force must be affordable: one 2000-man army costs 10 gold/month.
             int affordable = (int) (monthlyIncome(c) * 0.6 / (2000 * UPKEEP_PER_MAN));
             int count = Math.max(2, Math.min(c.provinces.size() / 6, affordable));
+            int each = affordable >= count ? 2000 : Math.max(800, 2000 * affordable / count);
             for (int i = 0; i < count; i++) {
                 Province p = i == 0 ? c.capital : c.provinces.get(rnd.nextInt(c.provinces.size()));
-                armies.add(new Army(nextArmyId++, c, p, 2000));
+                armies.add(new Army(nextArmyId++, c, p, each));
             }
         }
         mergeArmies();
@@ -141,21 +149,52 @@ public final class Game {
         return score;
     }
 
-    /** Ends the war; every province goes to whoever controls it. */
+    /**
+     * Ends the war. Each winner receives at most {@link #PEACE_SHARE} of the loser's land (the most valuable
+     * occupied provinces next to its own territory first); every other occupied province is handed back.
+     */
     public void makePeace(Country a, Country b) {
         if (!atWar(a, b) || isTotalWar(a, b)) return;
-        List<Province> transfers = new ArrayList<>();
-        for (Province p : b.provinces) if (p.controller == a) transfers.add(p);
-        for (Province p : a.provinces) if (p.controller == b) transfers.add(p);
-        for (Province p : transfers) world.setOwner(p, p.controller);
+        int ownedA = a.provinces.size(), ownedB = b.provinces.size();
+        int moved = transferOnPeace(a, b, ownedB) + transferOnPeace(b, a, ownedA);
         wars.remove(key(a, b));
         a.truceUntil = Math.max(a.truceUntil, day + TRUCE_DAYS);
         b.truceUntil = Math.max(b.truceUntil, day + TRUCE_DAYS);
-        log("Peace between " + a.name + " and " + b.name + "." + (transfers.isEmpty() ? "" : " " + transfers.size() + " provinces changed hands."));
+        log("Peace between " + a.name + " and " + b.name + "." + (moved == 0 ? "" : " " + moved + " provinces changed hands."));
         evictArmies();
         checkElimination(a);
         checkElimination(b);
         mapDirty = true;
+    }
+
+    private int transferOnPeace(Country winner, Country loser, int loserOwned) {
+        List<Province> held = new ArrayList<>();
+        for (Province p : loser.provinces) if (p.controller == winner) held.add(p);
+        if (held.isEmpty()) return 0;
+        // A normal war never takes a nation's last province: only a total war can erase it.
+        int quota = Math.max(0, Math.min(loserOwned - 1, (int) Math.ceil(loserOwned * PEACE_SHARE)));
+        held.sort((x, y) -> Double.compare(peaceValue(y, winner), peaceValue(x, winner)));
+        int moved = 0;
+        for (Province p : held) {
+            if (moved < quota) {
+                world.setOwner(p, winner);
+                moved++;
+            } else {
+                p.controller = loser;
+            }
+        }
+        return moved;
+    }
+
+    private static double peaceValue(Province p, Country winner) {
+        double v = p.population;
+        for (Province q : p.neighbors) {
+            if (q.owner == winner && q.controller == winner) {
+                v += 1_000_000;
+                break;
+            }
+        }
+        return v;
     }
 
     /** Player peace proposal. Returns a message describing the outcome. */
@@ -483,12 +522,17 @@ public final class Game {
         }
     }
 
-    /** A country that holds none of its own provinces capitulates to its occupiers. */
+    /**
+     * A country that holds none of its own provinces capitulates: normal wars end with limited demands
+     * (see {@link #makePeace}). Only when total-war enemies or third parties hold everything is it eliminated.
+     */
     private void checkElimination(Country c) {
-        if (!c.alive) return;
-        boolean holdsOwn = false;
-        for (Province p : c.provinces) if (p.controller == c) holdsOwn = true;
-        if (holdsOwn) return;
+        if (!c.alive || holdsOwnLand(c)) return;
+        for (Country foe : enemiesOf(c)) {
+            if (isTotalWar(c, foe)) continue;
+            makePeace(c, foe);
+            if (!c.alive || holdsOwnLand(c)) return;
+        }
         for (Province p : new ArrayList<>(c.provinces)) if (p.controller != c) world.setOwner(p, p.controller);
         c.alive = false;
         for (Army a : armies) if (a.owner == c) a.dead = true;
@@ -496,6 +540,11 @@ public final class Game {
         totalWars.removeIf(k -> (k >> 32) == c.id || (k & 0xFFFFFFFFL) == c.id);
         mapDirty = true;
         log(c.name + " has been eliminated!");
+    }
+
+    private static boolean holdsOwnLand(Country c) {
+        for (Province p : c.provinces) if (p.controller == c) return true;
+        return false;
     }
 
     /** After peace, armies standing on land they may no longer enter are sent home. */

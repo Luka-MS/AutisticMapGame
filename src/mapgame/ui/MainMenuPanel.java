@@ -38,6 +38,8 @@ public final class MainMenuPanel extends JPanel {
     public interface Listener {
         void play(MapKind kind, long seed);
 
+        void load();
+
         void resume();
 
         void quit();
@@ -51,7 +53,7 @@ public final class MainMenuPanel extends JPanel {
     private final Map<MapKind, JLabel> thumbs = new EnumMap<>(MapKind.class);
     private final Map<MapKind, JPanel> cards = new EnumMap<>(MapKind.class);
     private final JButton resumeBtn = new JButton("Resume current game"), quitBtn = new JButton("Quit"),
-            rerollBtn = new JButton("Re-roll");
+            loadBtn = new JButton("Load game..."), rerollBtn = new JButton("Re-roll");
     private final JLabel statusLabel = new JLabel(" ", SwingConstants.CENTER);
     private long randomSeed = System.nanoTime();
     private boolean busy;
@@ -93,8 +95,9 @@ public final class MainMenuPanel extends JPanel {
         JPanel bottom = new JPanel(new FlowLayout(FlowLayout.CENTER, 16, 0));
         bottom.setOpaque(false);
         resumeBtn.addActionListener(e -> listener.resume());
+        loadBtn.addActionListener(e -> listener.load());
         quitBtn.addActionListener(e -> listener.quit());
-        for (JButton b : new JButton[] {resumeBtn, quitBtn}) {
+        for (JButton b : new JButton[] {resumeBtn, loadBtn, quitBtn}) {
             b.setFocusable(false);
             b.setPreferredSize(new Dimension(200, 36));
             bottom.add(b);
@@ -205,6 +208,7 @@ public final class MainMenuPanel extends JPanel {
     private void setEnabledDeep(boolean enabled) {
         for (JPanel card : cards.values()) setEnabledRecursive(card, enabled);
         resumeBtn.setEnabled(enabled);
+        loadBtn.setEnabled(enabled);
         setCursor(Cursor.getPredefinedCursor(enabled ? Cursor.DEFAULT_CURSOR : Cursor.WAIT_CURSOR));
     }
 

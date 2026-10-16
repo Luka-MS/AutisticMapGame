@@ -13,6 +13,8 @@ Pick a nation, raise armies, declare wars and conquer the map - on a randomly ge
 - **Armies:** pathfinding by terrain travel time, battles with terrain defence bonuses, retreats, occupation of provinces, merging and splitting of armies.
 - **Army groups with fronts** (Hearts of Iron style): assign armies to a group, pick an enemy and a stance, and the group spreads its men evenly along the front by itself.
 - **Diplomacy:** declare war, propose peace (decided by war score), post-war truces, and **total war** that can never end in peace.
+- **Balanced peace deals:** in a normal war the winner takes at most 35% of the loser's provinces and nobody loses their last province; a nation without any land left capitulates. Only a total war can wipe a nation out. This keeps the AI world dynamic without snowballing or mass extinction.
+- **Save / load** with quick save (F5), quick load (F9), a file dialog, a yearly autosave and a *Load game* button in the main menu.
 - **AI nations** that recruit, attack, make peace and declare wars.
 - **Sea crossings:** islands are linked to the mainland over narrow straits (e.g. UK-France, Japan-Korea) as long as there is no navy.
 
@@ -34,7 +36,8 @@ To compile manually: `javac -d out\classes (Get-ChildItem src -Recurse -Filter *
 3. Press **Space** to unpause and use **1-5** to change the speed.
 4. Select an army (click its counter or a province) and **right-click** a province to march there.
 5. An army must stay for a few days in an enemy province to occupy it. Occupied provinces are drawn with stripes in the occupier's colour.
-6. Use the side panel to recruit armies, declare war and propose peace. A peace treaty hands every occupied province to its occupier. A nation that loses all of its own provinces is eliminated; you lose when your nation is eliminated and win when you are the last one left.
+6. Use the side panel to recruit armies, declare war and propose peace. A peace treaty hands the winner some of the occupied provinces (at most 35% of the loser's land, the rest is returned). A nation that loses all of its own land capitulates and survives with the rest; only a **total war** eliminates a nation. You lose when your nation is eliminated and win when you are the last one left.
+7. Save with **F5** (quick save) or the *Save* button, load with **F9** or the *Load* button. The game also autosaves every year. Saves are stored in the `saves` folder next to the game.
 
 ### Controls
 
@@ -50,6 +53,7 @@ To compile manually: `javac -d out\classes (Get-ChildItem src -Recurse -Filter *
 | X | Split the selected army in half (the new army gets selected) |
 | C | Merge idle friendly armies in the same province into the selected one |
 | G | Open the army group window |
+| F5 / F9 | Quick save / quick load |
 | Esc | Deselect |
 
 The divider between the control menu and the log on the right can be dragged up and down to resize the log.
@@ -75,7 +79,7 @@ Army counters of a group carry a `G<number>` tag. The selected group shows its f
 
 ### Wars and total war
 
-- *Declare war* starts a normal war. Peace is accepted when the other side is not winning or when the war has dragged on for a long time.
+- *Declare war* starts a normal war. Peace is accepted when the other side is not winning or when the war has dragged on for a long time. The winner takes at most 35% of the loser's provinces, and a nation can never lose its last province in a normal war.
 - *Declare TOTAL war* starts a war that can never end in peace - not by you and not by the AI. It only ends when one of the two nations is eliminated. An existing war can be escalated to total war. The game asks for confirmation first.
 
 ## The worlds
@@ -96,10 +100,10 @@ src/mapgame
   model/                          world data and map generation
     MapGenerator, RealMapGenerator, GeoData, MapKind, World, Province, Country, Army, ArmyGroup, Terrain
   sim/                            game rules
-    Game, Ai, FrontPlanner
+    Game, Ai, FrontPlanner, SaveFile
   ui/                             Swing user interface
     GameWindow, MainMenuPanel, MapPanel, MapRenderer, ArmyGroupDialog
-  tools/SimCheck.java             headless AI-only simulation for testing
+  tools/                          headless developer tools (SimCheck, BalanceCheck, SaveCheck)
 res/mapgame/data/world.txt        compact country and terrain geometry for the real maps
 tools/prepare_data.py             builds world.txt from Natural Earth GeoJSON
 build.ps1, run.ps1                build and run scripts
@@ -107,7 +111,21 @@ build.ps1, run.ps1                build and run scripts
 
 ## Development
 
-**Headless simulation.** `SimCheck` generates a world, lets the AI play for some years and prints statistics. It also writes map images, which is handy for checking map generation and game balance:
+All tools are headless and run from `out\classes` after `.\build.ps1`.
+
+**AI balance.** `BalanceCheck` lets the AI play a number of years on several seeds and prints survivors, how much land changes hands, the size of the biggest nations and debt:
+
+```powershell
+java -cp out\classes mapgame.tools.BalanceCheck [random|europe|world|all] [seeds] [years]
+```
+
+**Save/load round trip.** `SaveCheck` saves a game, loads it, lets both run on and verifies that they stay identical (the map is recreated deterministically from map type and seed):
+
+```powershell
+java -cp out\classes mapgame.tools.SaveCheck
+```
+
+**Simulation and map images.** `SimCheck` generates a world, lets the AI play for some years, prints statistics and writes map images:
 
 ```powershell
 java -cp out\classes mapgame.tools.SimCheck <seed> <years> <outDir> [random|europe|world]
@@ -123,7 +141,7 @@ python tools\prepare_data.py
 
 ## Roadmap
 
-Navy and sea transport, alliances, fog of war, technology, buildings, provinces with unrest, save/load, real capitals and cities, automatic reinforcement for army groups, sound.
+Navy and sea transport, alliances, fog of war, technology, buildings, provinces with unrest, real capitals and cities, automatic reinforcement for army groups, sound.
 
 ## Credits and license
 
