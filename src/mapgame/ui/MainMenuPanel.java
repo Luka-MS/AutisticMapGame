@@ -67,7 +67,7 @@ public final class MainMenuPanel extends JPanel {
         content.setOpaque(false);
         content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
 
-        JLabel title = new JLabel("MAP GAME", SwingConstants.CENTER);
+        JLabel title = new JLabel("AUTISTIC MAP GAME", SwingConstants.CENTER);
         title.setFont(title.getFont().deriveFont(Font.BOLD, 64f));
         title.setForeground(TEXT);
         title.setAlignmentX(CENTER_ALIGNMENT);

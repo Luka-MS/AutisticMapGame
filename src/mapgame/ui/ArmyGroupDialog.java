@@ -86,8 +86,11 @@ public final class ArmyGroupDialog extends JDialog {
         });
         addBtn.addActionListener(e -> {
             ArmyGroup g = list.getSelectedValue();
-            Army a = map.selectedArmy();
-            if (g != null && a != null && game.assignToGroup(g, a)) game.planGroup(g);
+            boolean added = false;
+            for (Army a : map.selectedArmies()) {
+                if (g != null && a.owner == game.player && game.assignToGroup(g, a)) added = true;
+            }
+            if (added) game.planGroup(g);
             refresh();
         });
         removeBtn.addActionListener(e -> {

@@ -1,4 +1,4 @@
-# Map Game
+# Autistic Map Game
 
 A real-time grand-strategy map game written in plain Java (Swing, no external dependencies), inspired by *Hearts of Iron* and *Age of History*.
 Pick a nation, raise armies, declare wars and conquer the map - on a randomly generated world, on Europe or on the whole Earth with real borders.
@@ -27,7 +27,7 @@ Requirements: a JDK 17 or newer (developed on JDK 25) and PowerShell on Windows.
 .\run.ps1     # starts the game
 ```
 
-On macOS or Linux, run `./run.sh` instead. It builds the game on first use and starts it. Right-click (marching orders) is ctrl-click or a two-finger click on a Mac trackpad.
+On macOS or Linux, run `./run.sh` instead. It builds the game on first use (and whenever the sources changed) and starts it. Right-click (marching orders) is ctrl-click or a two-finger click on a Mac trackpad.
 
 To compile manually: `javac -d out\classes (Get-ChildItem src -Recurse -Filter *.java).FullName`, copy `res\*` into `out\classes`, then run `java -cp out\classes mapgame.Main`.
 
@@ -46,8 +46,9 @@ To compile manually: `javac -d out\classes (Get-ChildItem src -Recurse -Filter *
 | Input | Action |
 |---|---|
 | Left-click | Select province / army |
-| Right-click | Send the selected army to a province |
-| Left-drag, arrow keys, WASD | Pan the map |
+| Right-click | Send the selected armies to a province |
+| Left-drag | Draw a selection box around your armies (hold Shift to add) |
+| Right-drag, middle-drag, arrow keys, WASD | Pan the map |
 | Mouse wheel | Zoom |
 | Space | Pause / resume |
 | 1-5 | Game speed |

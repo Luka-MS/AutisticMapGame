@@ -128,7 +128,7 @@ public final class SaveFile {
     // ---------------------------------------------------------------- reading
 
     private static Game read(DataInputStream in) throws IOException {
-        if (in.readInt() != MAGIC) throw new IOException("This is not a Map Game save file.");
+        if (in.readInt() != MAGIC) throw new IOException("This is not an Autistic Map Game save file.");
         int version = in.readInt();
         if (version != VERSION) throw new IOException("Unsupported save version " + version + ".");
         MapKind kind = MapKind.valueOf(in.readUTF());

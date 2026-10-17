@@ -17,9 +17,12 @@ import java.awt.event.MouseWheelEvent;
 import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import javax.swing.JPanel;
 import javax.swing.SwingUtilities;
 import mapgame.model.Army;
@@ -51,13 +54,15 @@ public final class MapPanel extends JPanel {
     private Mode mode = Mode.POLITICAL;
     private Province selected, hovered;
     private Army selectedArmy;
+    private final Set<Army> armySel = new LinkedHashSet<>();
     private ArmyGroup shownGroup;
     private Runnable selectionListener = () -> { };
     private final List<ArmyBox> boxes = new ArrayList<>();
     private final Highlight selectionHl = new Highlight(0x66FFFFFF), hoverHl = new Highlight(0x30FFFFFF);
 
     private int pressX, pressY, lastX, lastY;
-    private boolean dragged;
+    private boolean dragged, boxing;
+    private static final Color BOX_FILL = new Color(255, 255, 255, 40), BOX_LINE = new Color(255, 255, 255, 220);
 
     public MapPanel() {
         setBackground(SEA);
@@ -69,12 +74,21 @@ public final class MapPanel extends JPanel {
                 pressX = lastX = e.getX();
                 pressY = lastY = e.getY();
                 dragged = false;
+                boxing = false;
             }
 
             @Override
             public void mouseDragged(MouseEvent e) {
-                if (!SwingUtilities.isLeftMouseButton(e) && !SwingUtilities.isMiddleMouseButton(e)) return;
+                boolean left = SwingUtilities.isLeftMouseButton(e);
+                if (!left && !SwingUtilities.isRightMouseButton(e) && !SwingUtilities.isMiddleMouseButton(e)) return;
                 if (Math.abs(e.getX() - pressX) + Math.abs(e.getY() - pressY) > 4) dragged = true;
+                if (left) {
+                    boxing = dragged && game != null;
+                    lastX = e.getX();
+                    lastY = e.getY();
+                    if (boxing) repaint();
+                    return;
+                }
                 if (dragged) {
                     offX += e.getX() - lastX;
                     offY += e.getY() - lastY;
@@ -87,7 +101,13 @@ public final class MapPanel extends JPanel {
 
             @Override
             public void mouseReleased(MouseEvent e) {
-                if (game == null || dragged) return;
+                if (game == null) return;
+                if (boxing) {
+                    boxing = false;
+                    boxSelect(e.isShiftDown());
+                    return;
+                }
+                if (dragged) return;
                 if (SwingUtilities.isLeftMouseButton(e)) click(e.getX(), e.getY());
                 else if (SwingUtilities.isRightMouseButton(e)) order(e.getX(), e.getY());
             }
@@ -117,7 +137,7 @@ public final class MapPanel extends JPanel {
     public void setGame(Game g) {
         game = g;
         selected = hovered = null;
-        selectedArmy = null;
+        setArmySelection(null);
         political = MapRenderer.newImage();
         shownGroup = null;
         terrain = MapRenderer.newImage();
@@ -140,13 +160,18 @@ public final class MapPanel extends JPanel {
         return selectedArmy;
     }
 
+    /** All selected armies; the first one is {@link #selectedArmy()}. */
+    public List<Army> selectedArmies() {
+        return new ArrayList<>(armySel);
+    }
+
     public void setShownGroup(ArmyGroup g) {
         shownGroup = g;
         repaint();
     }
 
     public void selectArmy(Army a) {
-        selectedArmy = a;
+        setArmySelection(a == null ? null : List.of(a));
         selected = a == null ? null : a.location;
         selectionListener.run();
         repaint();
@@ -163,9 +188,15 @@ public final class MapPanel extends JPanel {
 
     public void clearSelection() {
         selected = null;
-        selectedArmy = null;
+        setArmySelection(null);
         selectionListener.run();
         repaint();
+    }
+
+    private void setArmySelection(Collection<Army> armies) {
+        armySel.clear();
+        if (armies != null) armySel.addAll(armies);
+        selectedArmy = armySel.isEmpty() ? null : armySel.iterator().next();
     }
 
     public void pan(int dx, int dy) {
@@ -191,8 +222,8 @@ public final class MapPanel extends JPanel {
             game.world.recomputeLabels();
             MapRenderer.render(game.world, political, true);
         }
-        if (selectedArmy != null && selectedArmy.dead) {
-            selectedArmy = null;
+        if (armySel.removeIf(a -> a.dead)) {
+            selectedArmy = armySel.isEmpty() ? null : armySel.iterator().next();
             selectionListener.run();
         }
         repaint();
@@ -241,7 +272,7 @@ public final class MapPanel extends JPanel {
         for (int i = boxes.size() - 1; i >= 0; i--) {
             ArmyBox b = boxes.get(i);
             if (b.rect.contains(sx, sy)) {
-                selectedArmy = b.army;
+                setArmySelection(List.of(b.army));
                 selected = b.army.location;
                 selectionListener.run();
                 repaint();
@@ -249,11 +280,11 @@ public final class MapPanel extends JPanel {
             }
         }
         selected = provinceAt(sx, sy);
-        selectedArmy = null;
+        setArmySelection(null);
         if (selected != null && game.player != null) {
             for (Army a : game.armies) {
                 if (a.owner == game.player && a.location == selected && !a.dead) {
-                    selectedArmy = a;
+                    setArmySelection(List.of(a));
                     break;
                 }
             }
@@ -262,11 +293,31 @@ public final class MapPanel extends JPanel {
         repaint();
     }
 
+    /** Selects all own armies whose counters touch the dragged rectangle (Shift adds to the selection). */
+    private void boxSelect(boolean add) {
+        Rectangle area = new Rectangle(Math.min(pressX, lastX), Math.min(pressY, lastY),
+                Math.abs(lastX - pressX), Math.abs(lastY - pressY));
+        List<Army> hit = new ArrayList<>();
+        if (add) hit.addAll(armySel);
+        for (ArmyBox b : boxes) {
+            if (b.army.owner == game.player && !b.army.dead && b.rect.intersects(area) && !hit.contains(b.army)) hit.add(b.army);
+        }
+        setArmySelection(hit);
+        if (selectedArmy != null) selected = selectedArmy.location;
+        selectionListener.run();
+        repaint();
+    }
+
     private void order(int sx, int sy) {
         if (selectedArmy == null || selectedArmy.owner != game.player) return;
         Province dest = provinceAt(sx, sy);
         if (dest == null) return;
-        if (!game.orderMove(selectedArmy, dest)) game.log("Our army cannot reach " + dest.name + ".");
+        int failed = 0;
+        for (Army a : armySel) {
+            if (a.owner == game.player && !a.dead && !game.orderMove(a, dest)) failed++;
+        }
+        if (failed == 1 && armySel.size() == 1) game.log("Our army cannot reach " + dest.name + ".");
+        else if (failed > 0) game.log(failed + " of " + armySel.size() + " armies cannot reach " + dest.name + ".");
         repaint();
     }
 
@@ -290,6 +341,14 @@ public final class MapPanel extends JPanel {
         drawGroupFront(g);
         drawArmyPath(g);
         drawArmies(g);
+        if (boxing) {
+            int x = Math.min(pressX, lastX), y = Math.min(pressY, lastY);
+            int w = Math.abs(lastX - pressX), h = Math.abs(lastY - pressY);
+            g.setColor(BOX_FILL);
+            g.fillRect(x, y, w, h);
+            g.setColor(BOX_LINE);
+            g.drawRect(x, y, w, h);
+        }
         g.dispose();
     }
 
@@ -358,10 +417,14 @@ public final class MapPanel extends JPanel {
     }
 
     private void drawArmyPath(Graphics2D g) {
-        Army a = selectedArmy;
-        if (a == null || a.path.isEmpty()) return;
         g.setColor(new Color(255, 230, 60, 230));
         g.setStroke(new BasicStroke(2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 1f, new float[] {6f, 5f}, 0f));
+        for (Army a : armySel) drawPath(g, a);
+        g.setStroke(new BasicStroke(1f));
+    }
+
+    private void drawPath(Graphics2D g, Army a) {
+        if (a.path.isEmpty()) return;
         double[] p0 = armyPos(a);
         double px = p0[0] * zoom + offX, py = p0[1] * zoom + offY;
         for (Province p : a.path) {
@@ -371,7 +434,6 @@ public final class MapPanel extends JPanel {
             py = ny;
         }
         g.fillOval((int) px - 4, (int) py - 4, 8, 8);
-        g.setStroke(new BasicStroke(1f));
     }
 
     private void drawArmies(Graphics2D g) {
@@ -393,7 +455,7 @@ public final class MapPanel extends JPanel {
             boxes.add(new ArmyBox(a, r));
             g.setColor(new Color(a.owner.rgb));
             g.fillRect(r.x, r.y, r.width, r.height);
-            boolean sel = a == selectedArmy;
+            boolean sel = armySel.contains(a);
             g.setColor(sel ? Color.YELLOW : Color.BLACK);
             g.setStroke(new BasicStroke(sel ? 2.5f : 1.2f));
             g.drawRect(r.x, r.y, r.width, r.height);

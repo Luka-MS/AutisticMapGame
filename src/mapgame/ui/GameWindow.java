@@ -6,6 +6,8 @@ import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.GridLayout;
+import java.awt.LayoutManager;
+import java.awt.Rectangle;
 import java.awt.event.ActionEvent;
 import java.io.File;
 import java.io.IOException;
@@ -31,6 +33,7 @@ import javax.swing.JSplitPane;
 import javax.swing.JTextArea;
 import javax.swing.JToggleButton;
 import javax.swing.KeyStroke;
+import javax.swing.Scrollable;
 import javax.swing.SwingUtilities;
 import javax.swing.SwingWorker;
 import javax.swing.Timer;
@@ -78,7 +81,7 @@ public final class GameWindow extends JFrame {
     private long lastHud;
 
     public GameWindow() {
-        super("Map Game");
+        super("Autistic Map Game");
         setDefaultCloseOperation(EXIT_ON_CLOSE);
         JPanel gamePanel = new JPanel(new BorderLayout());
         gamePanel.add(map, BorderLayout.CENTER);
@@ -216,7 +219,7 @@ public final class GameWindow extends JFrame {
             game.log("Game loaded: you lead " + game.player.name + ". Press Space to continue.");
         } else {
             logArea.append("Pick a nation: click any coloured province, then press Start.\n");
-            logArea.append("Left-drag: pan. Wheel: zoom. Right-click: move selected army.\n");
+            logArea.append("Left-drag: select armies. Right-drag/WASD: pan. Wheel: zoom. Right-click: move selected armies.\n");
         }
         refresh();
     }
@@ -225,7 +228,7 @@ public final class GameWindow extends JFrame {
 
     private JFileChooser chooser() {
         JFileChooser fc = new JFileChooser(SAVE_DIR.toAbsolutePath().toFile());
-        fc.setFileFilter(new FileNameExtensionFilter("Map Game saves (*" + SaveFile.EXTENSION + ")", "sav"));
+        fc.setFileFilter(new FileNameExtensionFilter("Autistic Map Game saves (*" + SaveFile.EXTENSION + ")", "sav"));
         return fc;
     }
 
@@ -340,7 +343,7 @@ public final class GameWindow extends JFrame {
         head.add(Box.createVerticalStrut(6));
 
         JPanel speeds = new JPanel();
-        speeds.setLayout(new BoxLayout(speeds, BoxLayout.X_AXIS));
+        speeds.setLayout(new GridLayout(1, 6, 4, 0));
         ButtonGroup group = new ButtonGroup();
         for (int i = 0; i <= 5; i++) {
             final int s = i;
@@ -364,7 +367,7 @@ public final class GameWindow extends JFrame {
         buttons.setLayout(new BoxLayout(buttons, BoxLayout.Y_AXIS));
         for (JButton b : new JButton[] {startBtn, recruitBtn, splitBtn, mergeBtn, groupsBtn, warBtn, totalWarBtn, peaceBtn}) buttons.add(left(b));
 
-        JPanel top = new JPanel(new BorderLayout(0, 6));
+        JPanel top = new WidthTrackingPanel(new BorderLayout(0, 6));
         top.setBorder(BorderFactory.createEmptyBorder(8, 8, 4, 8));
         top.add(head, BorderLayout.NORTH);
         top.add(infoScroll, BorderLayout.CENTER);
@@ -538,7 +541,7 @@ public final class GameWindow extends JFrame {
     }
 
     private String describe(Province p) {
-        if (p == null) return "Nothing selected.\n\nRight-click a province to send the\nselected army there.";
+        if (p == null) return "Nothing selected.\n\nRight-click a province to send the\nselected armies there.";
         StringBuilder sb = new StringBuilder();
         sb.append(p.name).append("  (").append(p.terrain.label).append(")\n");
         if (!p.isLand()) return sb.append("Open sea.").toString();
@@ -558,7 +561,14 @@ public final class GameWindow extends JFrame {
         Army a = map.selectedArmy();
         if (a != null && !a.dead) {
             String state = game.isEngaged(a) ? "in battle" : a.path.isEmpty() ? "idle" : "marching to " + lastOf(a).name;
-            sb.append(String.format("%n%nArmy of %s: %,d men, %s", a.owner.name, a.strength, state));
+            List<Army> all = map.selectedArmies();
+            if (all.size() > 1) {
+                int men = 0;
+                for (Army x : all) men += x.strength;
+                sb.append(String.format("%n%n%d armies selected: %,d men", all.size(), men));
+            } else {
+                sb.append(String.format("%n%nArmy of %s: %,d men, %s", a.owner.name, a.strength, state));
+            }
             if (a.group != null) sb.append("\nGroup: ").append(a.group.name);
         }
         return sb.toString();
@@ -581,6 +591,38 @@ public final class GameWindow extends JFrame {
         t.setEditable(false);
         t.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
         return t;
+    }
+
+    /** Always as wide as the scroll viewport, so wide buttons are squeezed instead of clipped. */
+    private static final class WidthTrackingPanel extends JPanel implements Scrollable {
+        WidthTrackingPanel(LayoutManager layout) {
+            super(layout);
+        }
+
+        @Override
+        public Dimension getPreferredScrollableViewportSize() {
+            return getPreferredSize();
+        }
+
+        @Override
+        public int getScrollableUnitIncrement(Rectangle r, int orientation, int direction) {
+            return 16;
+        }
+
+        @Override
+        public int getScrollableBlockIncrement(Rectangle r, int orientation, int direction) {
+            return 64;
+        }
+
+        @Override
+        public boolean getScrollableTracksViewportWidth() {
+            return true;
+        }
+
+        @Override
+        public boolean getScrollableTracksViewportHeight() {
+            return false;
+        }
     }
 
     private static JScrollPane scroll(JTextArea t, int height) {
