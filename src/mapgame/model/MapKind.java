@@ -1,15 +1,15 @@
 package mapgame.model;
 
+import mapgame.i18n.I18n;
+
 public enum MapKind {
-    RANDOM("Random world", "A freshly generated world with continents and 16 invented nations."),
-    EUROPE("Europe", "Real borders of Europe, the Mediterranean, North Africa and the Near East."),
-    WORLD("World", "The whole Earth with all of its real nations.");
+    RANDOM, EUROPE, WORLD;
 
-    public final String label;
-    public final String description;
+    public String label() {
+        return I18n.tr("mapkind." + name());
+    }
 
-    MapKind(String label, String description) {
-        this.label = label;
-        this.description = description;
+    public String description() {
+        return I18n.tr("mapkind." + name() + ".desc");
     }
 }

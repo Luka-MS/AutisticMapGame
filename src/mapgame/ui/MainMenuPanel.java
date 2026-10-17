@@ -17,17 +17,22 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.image.BufferedImage;
 import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.Map;
+import java.util.Set;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
+import javax.swing.JComboBox;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JTextArea;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
+import mapgame.i18n.I18n;
+import mapgame.i18n.Language;
 import mapgame.model.MapGenerator;
 import mapgame.model.MapKind;
 import mapgame.model.RealMapGenerator;
@@ -52,8 +57,14 @@ public final class MainMenuPanel extends JPanel {
     private final Listener listener;
     private final Map<MapKind, JLabel> thumbs = new EnumMap<>(MapKind.class);
     private final Map<MapKind, JPanel> cards = new EnumMap<>(MapKind.class);
-    private final JButton resumeBtn = new JButton("Resume current game"), quitBtn = new JButton("Quit"),
-            loadBtn = new JButton("Load game..."), rerollBtn = new JButton("Re-roll");
+    private final Map<MapKind, JLabel> names = new EnumMap<>(MapKind.class);
+    private final Map<MapKind, JTextArea> descriptions = new EnumMap<>(MapKind.class);
+    private final Map<MapKind, JButton> playButtons = new EnumMap<>(MapKind.class);
+    private final Set<MapKind> previewFailed = EnumSet.noneOf(MapKind.class);
+    private final JButton resumeBtn = new JButton(), quitBtn = new JButton(), loadBtn = new JButton(), rerollBtn = new JButton();
+    private final JLabel subtitle = new JLabel("", SwingConstants.CENTER), languageLabel = new JLabel();
+    private final JComboBox<Language> languageBox = new JComboBox<>(Language.values());
+    private boolean applyingLanguage;
     private final JLabel statusLabel = new JLabel(" ", SwingConstants.CENTER);
     private long randomSeed = System.nanoTime();
     private boolean busy;
@@ -71,7 +82,6 @@ public final class MainMenuPanel extends JPanel {
         title.setFont(title.getFont().deriveFont(Font.BOLD, 64f));
         title.setForeground(TEXT);
         title.setAlignmentX(CENTER_ALIGNMENT);
-        JLabel subtitle = new JLabel("Choose your world", SwingConstants.CENTER);
         subtitle.setFont(subtitle.getFont().deriveFont(Font.PLAIN, 22f));
         subtitle.setForeground(MUTED);
         subtitle.setAlignmentX(CENTER_ALIGNMENT);
@@ -105,9 +115,47 @@ public final class MainMenuPanel extends JPanel {
         resumeBtn.setVisible(false);
         bottom.setAlignmentX(CENTER_ALIGNMENT);
         content.add(bottom);
+        content.add(Box.createVerticalStrut(16));
+
+        languageBox.setFocusable(false);
+        languageBox.addActionListener(e -> {
+            if (!applyingLanguage) I18n.setLanguage((Language) languageBox.getSelectedItem());
+        });
+        languageLabel.setForeground(MUTED);
+        JPanel languageRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 8, 0));
+        languageRow.setOpaque(false);
+        languageRow.add(languageLabel);
+        languageRow.add(languageBox);
+        languageRow.setAlignmentX(CENTER_ALIGNMENT);
+        content.add(languageRow);
 
         add(content, new GridBagConstraints());
+        I18n.addListener(this::applyLanguage);
+        applyLanguage();
         loadPreviews(MapKind.values());
+    }
+
+    /** Sets every text of the menu in the current language. */
+    private void applyLanguage() {
+        applyingLanguage = true;
+        languageBox.setSelectedItem(I18n.language());
+        applyingLanguage = false;
+        subtitle.setText(I18n.tr("menu.subtitle"));
+        languageLabel.setText(I18n.tr("menu.language"));
+        resumeBtn.setText(I18n.tr("menu.resume"));
+        loadBtn.setText(I18n.tr("menu.load"));
+        quitBtn.setText(I18n.tr("menu.quit"));
+        rerollBtn.setText(I18n.tr("menu.reroll"));
+        rerollBtn.setToolTipText(I18n.tr("menu.reroll.tip"));
+        for (MapKind kind : MapKind.values()) {
+            names.get(kind).setText(kind.label());
+            descriptions.get(kind).setText(kind.description());
+            playButtons.get(kind).setText(I18n.tr("menu.play", kind.label()));
+            JLabel thumb = thumbs.get(kind);
+            if (thumb.getIcon() == null) thumb.setText(I18n.tr(previewFailed.contains(kind) ? "menu.nopreview" : "menu.preview"));
+        }
+        revalidate();
+        repaint();
     }
 
     private JPanel buildCard(MapKind kind) {
@@ -117,7 +165,7 @@ public final class MainMenuPanel extends JPanel {
                 BorderFactory.createLineBorder(new Color(0x3A5573), 2), BorderFactory.createEmptyBorder(12, 12, 14, 12)));
         card.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 
-        JLabel thumb = new JLabel("Preview...", SwingConstants.CENTER);
+        JLabel thumb = new JLabel("", SwingConstants.CENTER);
         thumb.setPreferredSize(new Dimension(THUMB_W, THUMB_H));
         thumb.setOpaque(true);
         thumb.setBackground(new Color(0x1B3A57));
@@ -128,10 +176,12 @@ public final class MainMenuPanel extends JPanel {
         JPanel text = new JPanel();
         text.setOpaque(false);
         text.setLayout(new BoxLayout(text, BoxLayout.Y_AXIS));
-        JLabel name = new JLabel(kind.label);
+        JLabel name = new JLabel();
+        names.put(kind, name);
         name.setFont(name.getFont().deriveFont(Font.BOLD, 26f));
         name.setForeground(TEXT);
-        JTextArea desc = new JTextArea(kind.description);
+        JTextArea desc = new JTextArea();
+        descriptions.put(kind, desc);
         desc.setLineWrap(true);
         desc.setWrapStyleWord(true);
         desc.setEditable(false);
@@ -141,8 +191,8 @@ public final class MainMenuPanel extends JPanel {
         desc.setFont(desc.getFont().deriveFont(Font.PLAIN, 14f));
         desc.setForeground(MUTED);
         desc.setAlignmentX(LEFT_ALIGNMENT);
-        desc.setPreferredSize(new Dimension(THUMB_W, 40));
-        desc.setMaximumSize(new Dimension(THUMB_W, 40));
+        desc.setPreferredSize(new Dimension(THUMB_W, 56));
+        desc.setMaximumSize(new Dimension(THUMB_W, 56));
         name.setAlignmentX(LEFT_ALIGNMENT);
         text.add(name);
         text.add(Box.createVerticalStrut(6));
@@ -151,13 +201,13 @@ public final class MainMenuPanel extends JPanel {
 
         JPanel foot = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
         foot.setOpaque(false);
-        JButton play = new JButton("Play " + kind.label);
+        JButton play = new JButton();
+        playButtons.put(kind, play);
         play.setFocusable(false);
         play.addActionListener(e -> start(kind));
         foot.add(play);
         if (kind == MapKind.RANDOM) {
             rerollBtn.setFocusable(false);
-            rerollBtn.setToolTipText("Generate another random world");
             rerollBtn.addActionListener(e -> {
                 randomSeed = System.nanoTime();
                 loadPreviews(MapKind.RANDOM);
@@ -226,7 +276,8 @@ public final class MainMenuPanel extends JPanel {
         for (MapKind kind : kinds) {
             JLabel thumb = thumbs.get(kind);
             thumb.setIcon(null);
-            thumb.setText("Preview...");
+            previewFailed.remove(kind);
+            thumb.setText(I18n.tr("menu.preview"));
         }
         long seed = randomSeed;
         Thread t = new Thread(() -> {
@@ -246,7 +297,10 @@ public final class MainMenuPanel extends JPanel {
                         thumbs.get(kind).setIcon(new ImageIcon(small));
                     });
                 } catch (RuntimeException ex) {
-                    SwingUtilities.invokeLater(() -> thumbs.get(kind).setText("(no preview)"));
+                    SwingUtilities.invokeLater(() -> {
+                        previewFailed.add(kind);
+                        thumbs.get(kind).setText(I18n.tr("menu.nopreview"));
+                    });
                 }
             }
         }, "menu-previews");

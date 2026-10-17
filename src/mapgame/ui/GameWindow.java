@@ -35,9 +35,11 @@ import javax.swing.JToggleButton;
 import javax.swing.KeyStroke;
 import javax.swing.Scrollable;
 import javax.swing.SwingUtilities;
+import javax.swing.UIManager;
 import javax.swing.SwingWorker;
 import javax.swing.Timer;
 import javax.swing.filechooser.FileNameExtensionFilter;
+import mapgame.i18n.I18n;
 import mapgame.model.Army;
 import mapgame.model.Country;
 import mapgame.model.MapKind;
@@ -52,13 +54,9 @@ public final class GameWindow extends JFrame {
     private final MapPanel map = new MapPanel();
     private final JLabel dateLabel = new JLabel();
     private final JTextArea status = textArea(5), info = textArea(8), logArea = new JTextArea();
-    private final JButton startBtn = button("Start as selected nation"), recruitBtn = button("Recruit army (40 gold, 1000 men)"),
-            splitBtn = button("Split army in half (X)"), mergeBtn = button("Merge armies here (C)"),
-            groupsBtn = button("Army groups / fronts (G)"),
-            warBtn = button("Declare war"), totalWarBtn = button("Declare TOTAL war (no peace)"),
-            peaceBtn = button("Propose peace"), menuBtn = button("Main menu"),
-            saveBtn = button("Save (F5)"), loadBtn = button("Load (F9)"),
-            modeBtn = button("Map mode: Political (M)");
+    private final JButton startBtn = button(), recruitBtn = button(), splitBtn = button(), mergeBtn = button(),
+            groupsBtn = button(), warBtn = button(), totalWarBtn = button(), peaceBtn = button(), menuBtn = button(),
+            saveBtn = button(), loadBtn = button(), modeBtn = button();
     private final List<JToggleButton> speedBtns = new ArrayList<>();
     private JSplitPane sideSplit;
     private final ArmyGroupDialog groupDialog;
@@ -112,10 +110,12 @@ public final class GameWindow extends JFrame {
         root.add(gamePanel, "game");
         setContentPane(root);
         installKeys();
+        I18n.addListener(this::applyLanguage);
         map.setSelectionListener(this::refresh);
         setSize(1380, 820);
         setLocationRelativeTo(null);
         groupDialog = new ArmyGroupDialog(this, map);
+        applyLanguage();
 
         startBtn.addActionListener(e -> startGame());
         menuBtn.addActionListener(e -> showMenu());
@@ -125,7 +125,7 @@ public final class GameWindow extends JFrame {
         groupsBtn.addActionListener(e -> showGroups());
         recruitBtn.addActionListener(e -> {
             Province p = map.selectedProvince();
-            if (p != null && game.recruit(game.player, p) == null) game.log("Cannot recruit there.");
+            if (p != null && game.recruit(game.player, p) == null) game.log(I18n.tr("log.cannot.recruit"));
             refresh();
         });
         splitBtn.addActionListener(e -> splitSelected());
@@ -138,10 +138,8 @@ public final class GameWindow extends JFrame {
         totalWarBtn.addActionListener(e -> {
             Province p = map.selectedProvince();
             if (p == null || p.owner == null) return;
-            int answer = JOptionPane.showConfirmDialog(this,
-                    "A total war against " + p.owner.name + " can NEVER end in peace.\n"
-                            + "It only ends when one of the two nations is destroyed.\n\nDeclare total war?",
-                    "Total war", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+            int answer = JOptionPane.showConfirmDialog(this, I18n.tr("dlg.total.confirm", p.owner.displayName()),
+                    I18n.tr("dlg.total.title"), JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
             if (answer == JOptionPane.YES_OPTION) game.declareWar(game.player, p.owner, true);
             refresh();
         });
@@ -180,7 +178,7 @@ public final class GameWindow extends JFrame {
 
     /** Generates the world in the background, then switches from the menu to the game. */
     public void startNewGame(MapKind kind, long seed) {
-        menu.setBusy("Generating " + kind.label + "...");
+        menu.setBusy(I18n.tr("menu.generating", kind.label()));
         new SwingWorker<Game, Void>() {
             @Override
             protected Game doInBackground() {
@@ -193,8 +191,8 @@ public final class GameWindow extends JFrame {
                     installGame(get(), false);
                 } catch (Exception ex) {
                     menu.setBusy(null);
-                    JOptionPane.showMessageDialog(GameWindow.this, "Could not create the world:\n" + ex.getCause(),
-                            "Error", JOptionPane.ERROR_MESSAGE);
+                    JOptionPane.showMessageDialog(GameWindow.this, I18n.tr("dlg.create.failed", ex.getCause()),
+                            I18n.tr("dlg.error"), JOptionPane.ERROR_MESSAGE);
                 }
             }
         }.execute();
@@ -216,10 +214,10 @@ public final class GameWindow extends JFrame {
         map.setGame(game);
         if (started) {
             map.centerOn(game.player.capital);
-            game.log("Game loaded: you lead " + game.player.name + ". Press Space to continue.");
+            game.log(I18n.tr("log.loaded", game.player.displayName()));
         } else {
-            logArea.append("Pick a nation: click any coloured province, then press Start.\n");
-            logArea.append("Left-drag: select armies. Right-drag/WASD: pan. Wheel: zoom. Right-click: move selected armies.\n");
+            logArea.append(I18n.tr("log.pick") + "\n");
+            logArea.append(I18n.tr("log.controls") + "\n");
         }
         refresh();
     }
@@ -228,7 +226,7 @@ public final class GameWindow extends JFrame {
 
     private JFileChooser chooser() {
         JFileChooser fc = new JFileChooser(SAVE_DIR.toAbsolutePath().toFile());
-        fc.setFileFilter(new FileNameExtensionFilter("Autistic Map Game saves (*" + SaveFile.EXTENSION + ")", "sav"));
+        fc.setFileFilter(new FileNameExtensionFilter(I18n.tr("dlg.saves", SaveFile.EXTENSION), "sav"));
         return fc;
     }
 
@@ -240,12 +238,12 @@ public final class GameWindow extends JFrame {
             // the chooser will simply open somewhere else
         }
         JFileChooser fc = chooser();
-        String nation = started ? game.player.name : "world";
+        String nation = started ? game.player.displayName() : I18n.tr("save.world");
         fc.setSelectedFile(new File(fc.getCurrentDirectory(), nation + " " + (1900 + game.day / 360) + SaveFile.EXTENSION));
         if (fc.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) return;
         Path file = fc.getSelectedFile().toPath();
         if (!file.getFileName().toString().endsWith(SaveFile.EXTENSION)) file = file.resolveSibling(file.getFileName() + SaveFile.EXTENSION);
-        if (Files.exists(file) && JOptionPane.showConfirmDialog(this, "Overwrite " + file.getFileName() + "?", "Save game",
+        if (Files.exists(file) && JOptionPane.showConfirmDialog(this, I18n.tr("dlg.save.overwrite", file.getFileName()), I18n.tr("dlg.save.title"),
                 JOptionPane.YES_NO_OPTION) != JOptionPane.YES_OPTION) return;
         saveTo(file);
     }
@@ -254,9 +252,10 @@ public final class GameWindow extends JFrame {
         if (game == null) return;
         try {
             SaveFile.save(game, file);
-            game.log("Game saved: " + file.getFileName());
+            game.log(I18n.tr("log.saved", file.getFileName()));
         } catch (IOException ex) {
-            JOptionPane.showMessageDialog(this, "Could not save the game:\n" + ex.getMessage(), "Save failed", JOptionPane.ERROR_MESSAGE);
+            JOptionPane.showMessageDialog(this, I18n.tr("dlg.save.failed", ex.getMessage()), I18n.tr("dlg.save.failed.title"),
+                    JOptionPane.ERROR_MESSAGE);
         }
     }
 
@@ -271,12 +270,12 @@ public final class GameWindow extends JFrame {
 
     private void quickLoad() {
         if (Files.exists(QUICKSAVE)) loadFrom(QUICKSAVE);
-        else if (game != null) game.log("No quick save yet. Press F5 to create one.");
+        else if (game != null) game.log(I18n.tr("log.no.quicksave"));
     }
 
     /** Loads in the background (the map is recreated), then continues the game. */
     private void loadFrom(Path file) {
-        menu.setBusy("Loading " + file.getFileName() + "...");
+        menu.setBusy(I18n.tr("menu.loading", file.getFileName()));
         new SwingWorker<Game, Void>() {
             @Override
             protected Game doInBackground() throws IOException {
@@ -290,8 +289,8 @@ public final class GameWindow extends JFrame {
                 } catch (Exception ex) {
                     menu.setBusy(null);
                     Throwable cause = ex.getCause() != null ? ex.getCause() : ex;
-                    JOptionPane.showMessageDialog(GameWindow.this, "Could not load " + file.getFileName() + ":\n" + cause.getMessage(),
-                            "Load failed", JOptionPane.ERROR_MESSAGE);
+                    JOptionPane.showMessageDialog(GameWindow.this, I18n.tr("dlg.load.failed", file.getFileName(), cause.getMessage()),
+                            I18n.tr("dlg.load.failed.title"), JOptionPane.ERROR_MESSAGE);
                 }
             }
         }.execute();
@@ -300,9 +299,9 @@ public final class GameWindow extends JFrame {
     private void autosave() {
         try {
             SaveFile.save(game, AUTOSAVE);
-            game.log("Autosaved.");
+            game.log(I18n.tr("log.autosaved"));
         } catch (IOException ex) {
-            game.log("Autosave failed: " + ex.getMessage());
+            game.log(I18n.tr("log.autosave.failed", ex.getMessage()));
         }
     }
 
@@ -321,7 +320,7 @@ public final class GameWindow extends JFrame {
         Army a = map.selectedArmy();
         if (!playerArmy(a)) return;
         Army n = game.split(a);
-        if (n == null) game.log("This army cannot be split right now.");
+        if (n == null) game.log(I18n.tr("log.cannot.split"));
         else map.selectArmy(n);
         refresh();
     }
@@ -329,7 +328,7 @@ public final class GameWindow extends JFrame {
     private void mergeSelected() {
         Army a = map.selectedArmy();
         if (!playerArmy(a)) return;
-        if (game.mergeStack(a) == 0) game.log("No idle armies to merge here.");
+        if (game.mergeStack(a) == 0) game.log(I18n.tr("log.no.merge"));
         refresh();
     }
 
@@ -398,7 +397,7 @@ public final class GameWindow extends JFrame {
         sideSplit.setContinuousLayout(true);
         sideSplit.setDividerSize(8);
         sideSplit.setBorder(null);
-        sideSplit.setPreferredSize(new Dimension(340, 0));
+        sideSplit.setPreferredSize(new Dimension(390, 0));
         return sideSplit;
     }
 
@@ -439,7 +438,7 @@ public final class GameWindow extends JFrame {
         if (p == null || p.owner == null) return;
         game.player = p.owner;
         started = true;
-        game.log("You lead " + game.player.name + ". Press Space to unpause.");
+        game.log(I18n.tr("log.start", game.player.displayName()));
         map.centerOn(game.player.capital);
         setSpeed(1);
         refresh();
@@ -450,9 +449,32 @@ public final class GameWindow extends JFrame {
         speedBtns.get(speed).setSelected(true);
     }
 
+    /** Sets all fixed texts in the current language; the HUD texts follow in {@link #refresh()}. */
+    private void applyLanguage() {
+        UIManager.put("OptionPane.yesButtonText", I18n.tr("dlg.yes"));
+        UIManager.put("OptionPane.noButtonText", I18n.tr("dlg.no"));
+        UIManager.put("OptionPane.okButtonText", I18n.tr("dlg.ok"));
+        UIManager.put("OptionPane.cancelButtonText", I18n.tr("dlg.cancel"));
+        startBtn.setText(I18n.tr("btn.start"));
+        recruitBtn.setText(I18n.tr("btn.recruit", Game.RECRUIT_GOLD, Game.RECRUIT_MEN));
+        splitBtn.setText(I18n.tr("btn.split"));
+        mergeBtn.setText(I18n.tr("btn.merge"));
+        groupsBtn.setText(I18n.tr("btn.groups"));
+        menuBtn.setText(I18n.tr("btn.menu"));
+        saveBtn.setText(I18n.tr("btn.save"));
+        loadBtn.setText(I18n.tr("btn.load"));
+        updateModeText();
+        map.repaint();
+        refresh();
+    }
+
+    private void updateModeText() {
+        modeBtn.setText(I18n.tr("btn.mode", map.mode().label()));
+    }
+
     private void toggleMode() {
         map.toggleMode();
-        modeBtn.setText("Map mode: " + map.mode().label + " (M)");
+        updateModeText();
     }
 
     private void frame() {
@@ -487,12 +509,12 @@ public final class GameWindow extends JFrame {
         if (!game.player.alive) {
             started = false;
             setSpeed(0);
-            JOptionPane.showMessageDialog(this, game.player.name + " has fallen. Your nation is no more.", "Defeat",
+            JOptionPane.showMessageDialog(this, I18n.tr("dlg.defeat", game.player.displayName()), I18n.tr("dlg.defeat.title"),
                     JOptionPane.WARNING_MESSAGE);
         } else if (game.aliveCountries().size() == 1) {
             started = false;
             setSpeed(0);
-            JOptionPane.showMessageDialog(this, "You rule the whole world!", "Victory", JOptionPane.INFORMATION_MESSAGE);
+            JOptionPane.showMessageDialog(this, I18n.tr("dlg.victory"), I18n.tr("dlg.victory.title"), JOptionPane.INFORMATION_MESSAGE);
         }
     }
 
@@ -508,12 +530,11 @@ public final class GameWindow extends JFrame {
             double net = game.monthlyIncome(me) - game.monthlyUpkeep(me);
             List<Country> foes = game.enemiesOf(me);
             StringBuilder wars = new StringBuilder();
-            for (Country f : foes) wars.append(wars.length() > 0 ? ", " : "").append(f.name);
-            set(status, String.format("%s%nGold: %,.0f (%+.1f / month)%nManpower: %,d (+%,d / month)%nProvinces: %d   Army: %,d men%nAt war with: %s",
-                    me.name, me.gold, net, me.manpower, game.monthlyManpower(me), me.provinces.size(), game.strength(me),
-                    foes.isEmpty() ? "nobody" : wars));
+            for (Country f : foes) wars.append(wars.length() > 0 ? ", " : "").append(f.displayName());
+            set(status, I18n.tr("hud.status", me.displayName(), me.gold, net, me.manpower, game.monthlyManpower(me), me.provinces.size(),
+                    game.strength(me), foes.isEmpty() ? I18n.tr("hud.nobody") : wars));
         } else {
-            set(status, "Choose your nation.\nClick a coloured province, then press 'Start'.\n\nSpace pauses, 1-5 sets speed.");
+            set(status, I18n.tr("hud.choose"));
         }
         set(info, describe(sel));
 
@@ -531,45 +552,49 @@ public final class GameWindow extends JFrame {
         boolean atWarWithSel = foreign && game.atWar(me, sel.owner);
         boolean totalWithSel = atWarWithSel && game.isTotalWar(me, sel.owner);
         totalWarBtn.setEnabled(foreign && !totalWithSel);
-        totalWarBtn.setText(!foreign ? "Declare TOTAL war (no peace)"
-                : atWarWithSel ? "Escalate to TOTAL war on " + sel.owner.name : "Declare TOTAL war on " + sel.owner.name);
+        totalWarBtn.setText(!foreign ? I18n.tr("btn.total")
+                : I18n.tr(atWarWithSel ? "btn.total.escalate" : "btn.total.on", sel.owner.displayName()));
         peaceBtn.setEnabled(atWarWithSel && !totalWithSel);
-        peaceBtn.setText(totalWithSel ? "No peace possible (total war)" : "Propose peace");
+        peaceBtn.setText(I18n.tr(totalWithSel ? "btn.peace.none" : "btn.peace"));
         groupsBtn.setEnabled(playing);
-        warBtn.setText(foreign ? "Declare war on " + sel.owner.name : "Declare war");
+        warBtn.setText(foreign ? I18n.tr("btn.war.on", sel.owner.displayName()) : I18n.tr("btn.war"));
         if (groupDialog.isVisible()) groupDialog.refresh();
     }
 
     private String describe(Province p) {
-        if (p == null) return "Nothing selected.\n\nRight-click a province to send the\nselected armies there.";
+        if (p == null) return I18n.tr("info.none");
         StringBuilder sb = new StringBuilder();
-        sb.append(p.name).append("  (").append(p.terrain.label).append(")\n");
-        if (!p.isLand()) return sb.append("Open sea.").toString();
-        sb.append(String.format("Population: %,d%nIncome: %.1f gold / month%n", p.population, p.income()));
-        sb.append("Owner: ").append(p.owner == null ? "unclaimed" : p.owner.name).append('\n');
-        if (p.owner != null && p.controller != p.owner) sb.append("Occupied by: ").append(p.controller.name).append('\n');
-        if (!p.ferryTo.isEmpty()) sb.append("Sea crossings: +").append(Province.FERRY_DAYS).append(" days\n");
-        sb.append(String.format("Travel time: %d days%n", p.terrain.moveDays));
+        sb.append(I18n.tr("info.name", p.name, p.terrain.label())).append('\n');
+        if (!p.isLand()) return sb.append(I18n.tr("info.sea")).toString();
+        sb.append(I18n.tr("info.population", p.population, p.income())).append('\n');
+        sb.append(I18n.tr("info.owner", p.owner == null ? I18n.tr("info.unclaimed") : p.owner.displayName())).append('\n');
+        if (p.owner != null && p.controller != p.owner) sb.append(I18n.tr("info.occupied", p.controller.displayName())).append('\n');
+        if (!p.ferryTo.isEmpty()) sb.append(I18n.tr("info.ferry", Province.FERRY_DAYS)).append('\n');
+        sb.append(I18n.tr("info.travel", p.terrain.moveDays)).append('\n');
         if (p.owner != null) {
             Country c = p.owner;
-            sb.append(String.format("%n%s: %d provinces, %,d men%n", c.name, c.provinces.size(), game.strength(c)));
+            sb.append('\n').append(I18n.tr("info.country", c.displayName(), c.provinces.size(), game.strength(c))).append('\n');
             if (started && c != game.player) {
-                sb.append(game.atWar(game.player, c) ? (game.isTotalWar(game.player, c) ? "TOTAL WAR - no peace (war score " : "AT WAR (war score ")
-                        + String.format("%+d", game.warScore(game.player, c)) + ")" : "At peace");
+                if (game.atWar(game.player, c)) {
+                    sb.append(I18n.tr(game.isTotalWar(game.player, c) ? "info.war.total" : "info.war", game.warScore(game.player, c)));
+                } else {
+                    sb.append(I18n.tr("info.peace"));
+                }
             }
         }
         Army a = map.selectedArmy();
         if (a != null && !a.dead) {
-            String state = game.isEngaged(a) ? "in battle" : a.path.isEmpty() ? "idle" : "marching to " + lastOf(a).name;
+            String state = game.isEngaged(a) ? I18n.tr("army.battle")
+                    : a.path.isEmpty() ? I18n.tr("army.idle") : I18n.tr("army.marching", lastOf(a).name);
             List<Army> all = map.selectedArmies();
             if (all.size() > 1) {
                 int men = 0;
                 for (Army x : all) men += x.strength;
-                sb.append(String.format("%n%n%d armies selected: %,d men", all.size(), men));
+                sb.append("\n\n").append(I18n.tr("info.armies", all.size(), men));
             } else {
-                sb.append(String.format("%n%nArmy of %s: %,d men, %s", a.owner.name, a.strength, state));
+                sb.append("\n\n").append(I18n.tr("info.army", a.owner.displayName(), a.strength, state));
             }
-            if (a.group != null) sb.append("\nGroup: ").append(a.group.name);
+            if (a.group != null) sb.append('\n').append(I18n.tr("info.group", a.group.displayName()));
         }
         return sb.toString();
     }
@@ -589,6 +614,8 @@ public final class GameWindow extends JFrame {
     private static JTextArea textArea(int rows) {
         JTextArea t = new JTextArea(rows, 24);
         t.setEditable(false);
+        t.setLineWrap(true);
+        t.setWrapStyleWord(true);
         t.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
         return t;
     }
@@ -633,8 +660,8 @@ public final class GameWindow extends JFrame {
         return sp;
     }
 
-    private static JButton button(String text) {
-        JButton b = new JButton(text);
+    private static JButton button() {
+        JButton b = new JButton();
         b.setFocusable(false);
         return b;
     }

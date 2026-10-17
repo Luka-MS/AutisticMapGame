@@ -15,6 +15,7 @@ Pick a nation, raise armies, declare wars and conquer the map - on a randomly ge
 - **Diplomacy:** declare war, propose peace (decided by war score), post-war truces, and **total war** that can never end in peace.
 - **Balanced peace deals:** in a normal war the winner takes at most 35% of the loser's provinces and nobody loses their last province; a nation without any land left capitulates. Only a total war can wipe a nation out. This keeps the AI world dynamic without snowballing or mass extinction.
 - **Save / load** with quick save (F5), quick load (F9), a file dialog, a yearly autosave and a *Load game* button in the main menu.
+- **Languages:** English, German, Serbo-Croatian in Croatian wording (Latin and Cyrillic script) and Russian, switchable in the main menu at any time. The choice is remembered. Texts live in `res/mapgame/lang/*.properties`; the Cyrillic Serbo-Croatian texts are generated from `sh.properties` (text in `{braces}` stays Latin). Names of the real countries (Europe and World maps) are translated via `res/mapgame/lang/countries.tsv`; invented nations and province names stay as generated.
 - **AI nations** that recruit, attack, make peace and declare wars.
 - **Sea crossings:** islands are linked to the mainland over narrow straits (e.g. UK-France, Japan-Korea) as long as there is no navy.
 
@@ -47,8 +48,8 @@ To compile manually: `javac -d out\classes (Get-ChildItem src -Recurse -Filter *
 |---|---|
 | Left-click | Select province / army |
 | Right-click | Send the selected armies to a province |
-| Left-drag | Draw a selection box around your armies (hold Shift to add) |
-| Right-drag, middle-drag, arrow keys, WASD | Pan the map |
+| Shift + left-drag | Draw a selection box around your armies |
+| Left-drag, right-drag, middle-drag, arrow keys, WASD | Pan the map |
 | Mouse wheel | Zoom |
 | Space | Pause / resume |
 | 1-5 | Game speed |

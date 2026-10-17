@@ -4,21 +4,21 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import mapgame.i18n.I18n;
 
 /** A set of armies that is automatically spread over the front against one enemy nation. */
 public final class ArmyGroup {
     public enum Stance {
-        ATTACK("Attack (push into enemy provinces)"), DEFEND("Defend (hold our border provinces)");
+        ATTACK, DEFEND;
 
-        public final String label;
-
-        Stance(String label) {
-            this.label = label;
+        public String label() {
+            return I18n.tr("stance." + name());
         }
     }
 
     public final int id;
     public final Country owner;
+    /** Null while the group has the default name, which follows the language setting. */
     public String name;
     /** Enemy this group fights; null until the player picks a front. */
     public Country target;
@@ -28,12 +28,11 @@ public final class ArmyGroup {
     public final Map<Army, Province> slots = new HashMap<>();
     /** Current front line provinces (for display). */
     public List<Province> front = new ArrayList<>();
-    public String status = "No front selected.";
+    public String status = "";
 
     public ArmyGroup(int id, Country owner) {
         this.id = id;
         this.owner = owner;
-        this.name = "Army Group " + id;
     }
 
     public int strength() {
@@ -42,8 +41,12 @@ public final class ArmyGroup {
         return s;
     }
 
+    public String displayName() {
+        return name != null ? name : I18n.tr("group.default", id);
+    }
+
     @Override
     public String toString() {
-        return name;
+        return displayName();
     }
 }

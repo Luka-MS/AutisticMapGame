@@ -14,6 +14,7 @@ import java.util.Random;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
+import mapgame.i18n.I18n;
 import mapgame.model.Army;
 import mapgame.model.ArmyGroup;
 import mapgame.model.Country;
@@ -33,7 +34,6 @@ public final class Game {
     public static final int TRUCE_DAYS = 720;
     /** Share of the loser's provinces a winner may take in a normal peace deal. */
     public static final double PEACE_SHARE = 0.35;
-    private static final String[] MONTHS = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
 
     public final World world;
     public final Random rnd;
@@ -87,7 +87,7 @@ public final class Game {
     // ---------------------------------------------------------------- calendar / log
 
     public static String formatDate(int day) {
-        return (day % 30 + 1) + " " + MONTHS[(day % 360) / 30] + " " + (1900 + day / 360);
+        return I18n.tr("date.format", day % 30 + 1, I18n.tr("month." + (day % 360) / 30), 1900 + day / 360);
     }
 
     public String date() {
@@ -128,12 +128,12 @@ public final class Game {
         if (atWar(a, b)) {
             if (!total || isTotalWar(a, b)) return false;
             totalWars.add(key(a, b));
-            log(a.name + " escalated the war against " + b.name + " to a TOTAL WAR!");
+            log(I18n.tr("war.escalated", a.displayName(), b.displayName()));
             return true;
         }
         wars.put(key(a, b), day);
         if (total) totalWars.add(key(a, b));
-        log(a.name + (total ? " declared TOTAL WAR on " : " declared war on ") + b.name + "!");
+        log(I18n.tr(total ? "war.declared.total" : "war.declared", a.displayName(), b.displayName()));
         return true;
     }
 
@@ -160,7 +160,7 @@ public final class Game {
         wars.remove(key(a, b));
         a.truceUntil = Math.max(a.truceUntil, day + TRUCE_DAYS);
         b.truceUntil = Math.max(b.truceUntil, day + TRUCE_DAYS);
-        log("Peace between " + a.name + " and " + b.name + "." + (moved == 0 ? "" : " " + moved + " provinces changed hands."));
+        log(I18n.tr("peace.made", a.displayName(), b.displayName()) + (moved == 0 ? "" : " " + I18n.tr("peace.moved", moved)));
         evictArmies();
         checkElimination(a);
         checkElimination(b);
@@ -199,12 +199,12 @@ public final class Game {
 
     /** Player peace proposal. Returns a message describing the outcome. */
     public String proposePeace(Country from, Country to) {
-        if (!atWar(from, to)) return "Not at war.";
-        if (isTotalWar(from, to)) return "This is a total war: there can be no peace until one side is destroyed.";
+        if (!atWar(from, to)) return I18n.tr("peace.notwar");
+        if (isTotalWar(from, to)) return I18n.tr("peace.total");
         boolean accept = warScore(to, from) <= 0 || day - warStart(from, to) > 300;
-        if (!accept) return to.name + " refuses: they are winning the war.";
+        if (!accept) return I18n.tr("peace.refuses", to.displayName());
         makePeace(from, to);
-        return to.name + " accepts peace.";
+        return I18n.tr("peace.accepts", to.displayName());
     }
 
     // ---------------------------------------------------------------- queries
@@ -349,7 +349,7 @@ public final class Game {
         if (a == null || a.dead || dest == null || !dest.isLand()) return false;
         if (!moveArmy(a, dest)) return false;
         if (a.group != null) {
-            log(a.owner.name + ": army removed from " + a.group.name + " (manual order).");
+            log(I18n.tr("army.removed", a.owner.displayName(), a.group.displayName()));
             releaseFromGroup(a);
         }
         return true;
@@ -476,9 +476,9 @@ public final class Game {
         boolean playerInvolved = a.owner == player;
         if (best == null || a.strength <= 0) {
             a.dead = true;
-            if (playerInvolved) log("Our army was destroyed at " + a.location.name + ".");
+            if (playerInvolved) log(I18n.tr("army.destroyed", a.location.name));
         } else {
-            if (playerInvolved) log("Our army was routed from " + a.location.name + ".");
+            if (playerInvolved) log(I18n.tr("army.routed", a.location.name));
             a.moveTo(best);
             a.clearPath();
         }
@@ -515,9 +515,9 @@ public final class Game {
             Country victim = p.owner;
             p.controller = a.owner;
             mapDirty = true;
-            if (a.owner == player) log("We occupied " + p.name + " (" + victim.name + ").");
-            else if (victim == player) log(p.name + " was occupied by " + a.owner.name + "!");
-            if (victim.capital == p && victim.alive) log(victim.name + "'s capital " + p.name + " has fallen to " + a.owner.name + ".");
+            if (a.owner == player) log(I18n.tr("occupied.us", p.name, victim.displayName()));
+            else if (victim == player) log(I18n.tr("occupied.them", p.name, a.owner.displayName()));
+            if (victim.capital == p && victim.alive) log(I18n.tr("capital.fallen", victim.displayName(), p.name, a.owner.displayName()));
             checkElimination(victim);
         }
     }
@@ -539,7 +539,7 @@ public final class Game {
         wars.keySet().removeIf(k -> (k >> 32) == c.id || (k & 0xFFFFFFFFL) == c.id);
         totalWars.removeIf(k -> (k >> 32) == c.id || (k & 0xFFFFFFFFL) == c.id);
         mapDirty = true;
-        log(c.name + " has been eliminated!");
+        log(I18n.tr("country.eliminated", c.displayName()));
     }
 
     private static boolean holdsOwnLand(Country c) {

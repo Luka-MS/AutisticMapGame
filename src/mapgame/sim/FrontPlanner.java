@@ -6,6 +6,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.ToDoubleFunction;
+import mapgame.i18n.I18n;
 import mapgame.model.Army;
 import mapgame.model.ArmyGroup;
 import mapgame.model.Country;
@@ -30,16 +31,16 @@ final class FrontPlanner {
         Country me = grp.owner, foe = grp.target;
         if (!me.alive) return;
         if (grp.armies.isEmpty()) {
-            grp.status = "No armies assigned. Select an army and press 'Add selected army'.";
+            grp.status = I18n.tr("group.status.noarmies");
             return;
         }
         if (foe == null) {
-            grp.status = "No front selected. Choose an enemy nation.";
+            grp.status = I18n.tr("group.status.nofront");
             return;
         }
         if (!foe.alive || !g.atWar(me, foe)) {
             grp.slots.clear();
-            grp.status = "Not at war with " + foe.name + ". Armies are waiting.";
+            grp.status = I18n.tr("group.status.nowar", foe.displayName());
             return;
         }
 
@@ -74,8 +75,8 @@ final class FrontPlanner {
 
         assign(g, grp, front, total);
         order(g, grp);
-        grp.status = String.format("Front vs %s: %d provinces, %d armies, %,d men (%s)",
-                foe.name, front.size(), grp.armies.size(), total, attack ? "attacking" : "defending");
+        grp.status = I18n.tr("group.status.front", foe.displayName(), front.size(), grp.armies.size(), total,
+                I18n.tr(attack ? "group.status.attacking" : "group.status.defending"));
     }
 
     /** Foe provinces we are touching (attack targets). */
@@ -112,7 +113,7 @@ final class FrontPlanner {
     private static void noContact(Game g, ArmyGroup grp, boolean attack) {
         grp.slots.clear();
         if (!attack) {
-            grp.status = "No contact with " + grp.target.name + ". Holding position.";
+            grp.status = I18n.tr("group.status.nocontact", grp.target.displayName());
             return;
         }
         Country me = grp.owner, foe = grp.target;
@@ -128,7 +129,7 @@ final class FrontPlanner {
                 moving++;
             }
         }
-        grp.status = moving > 0 ? "Advancing towards " + foe.name + "." : "Cannot reach " + foe.name + " by land.";
+        grp.status = I18n.tr(moving > 0 ? "group.status.advancing" : "group.status.unreachable", foe.displayName());
     }
 
     private static void assign(Game g, ArmyGroup grp, List<Province> front, int total) {

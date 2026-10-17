@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.Set;
 import javax.swing.JPanel;
 import javax.swing.SwingUtilities;
+import mapgame.i18n.I18n;
 import mapgame.model.Army;
 import mapgame.model.ArmyGroup;
 import mapgame.model.Country;
@@ -34,12 +35,10 @@ import mapgame.sim.Game;
 /** Pannable, zoomable map view with province/army selection and move orders. */
 public final class MapPanel extends JPanel {
     public enum Mode {
-        POLITICAL("Political"), TERRAIN("Terrain");
+        POLITICAL, TERRAIN;
 
-        public final String label;
-
-        Mode(String label) {
-            this.label = label;
+        public String label() {
+            return I18n.tr("mapmode." + name());
         }
     }
 
@@ -61,7 +60,7 @@ public final class MapPanel extends JPanel {
     private final Highlight selectionHl = new Highlight(0x66FFFFFF), hoverHl = new Highlight(0x30FFFFFF);
 
     private int pressX, pressY, lastX, lastY;
-    private boolean dragged, boxing;
+    private boolean dragged, boxing, shiftAtPress;
     private static final Color BOX_FILL = new Color(255, 255, 255, 40), BOX_LINE = new Color(255, 255, 255, 220);
 
     public MapPanel() {
@@ -75,6 +74,7 @@ public final class MapPanel extends JPanel {
                 pressY = lastY = e.getY();
                 dragged = false;
                 boxing = false;
+                shiftAtPress = e.isShiftDown();
             }
 
             @Override
@@ -82,7 +82,8 @@ public final class MapPanel extends JPanel {
                 boolean left = SwingUtilities.isLeftMouseButton(e);
                 if (!left && !SwingUtilities.isRightMouseButton(e) && !SwingUtilities.isMiddleMouseButton(e)) return;
                 if (Math.abs(e.getX() - pressX) + Math.abs(e.getY() - pressY) > 4) dragged = true;
-                if (left) {
+                // Shift + left-drag draws the selection box; every other drag moves the camera.
+                if (left && shiftAtPress) {
                     boxing = dragged && game != null;
                     lastX = e.getX();
                     lastY = e.getY();
@@ -104,7 +105,7 @@ public final class MapPanel extends JPanel {
                 if (game == null) return;
                 if (boxing) {
                     boxing = false;
-                    boxSelect(e.isShiftDown());
+                    boxSelect();
                     return;
                 }
                 if (dragged) return;
@@ -293,12 +294,11 @@ public final class MapPanel extends JPanel {
         repaint();
     }
 
-    /** Selects all own armies whose counters touch the dragged rectangle (Shift adds to the selection). */
-    private void boxSelect(boolean add) {
+    /** Selects all own armies whose counters touch the dragged rectangle. */
+    private void boxSelect() {
         Rectangle area = new Rectangle(Math.min(pressX, lastX), Math.min(pressY, lastY),
                 Math.abs(lastX - pressX), Math.abs(lastY - pressY));
         List<Army> hit = new ArrayList<>();
-        if (add) hit.addAll(armySel);
         for (ArmyBox b : boxes) {
             if (b.army.owner == game.player && !b.army.dead && b.rect.intersects(area) && !hit.contains(b.army)) hit.add(b.army);
         }
@@ -316,8 +316,8 @@ public final class MapPanel extends JPanel {
         for (Army a : armySel) {
             if (a.owner == game.player && !a.dead && !game.orderMove(a, dest)) failed++;
         }
-        if (failed == 1 && armySel.size() == 1) game.log("Our army cannot reach " + dest.name + ".");
-        else if (failed > 0) game.log(failed + " of " + armySel.size() + " armies cannot reach " + dest.name + ".");
+        if (failed == 1 && armySel.size() == 1) game.log(I18n.tr("army.cannot.reach", dest.name));
+        else if (failed > 0) game.log(I18n.tr("army.cannot.reach.n", failed, armySel.size(), dest.name));
         repaint();
     }
 
@@ -359,12 +359,12 @@ public final class MapPanel extends JPanel {
             if (size < 9) continue;
             g.setFont(getFont().deriveFont(Font.BOLD, size));
             FontMetrics fm = g.getFontMetrics();
-            int x = (int) (c.labelX * zoom + offX) - fm.stringWidth(c.name) / 2;
+            int x = (int) (c.labelX * zoom + offX) - fm.stringWidth(c.displayName()) / 2;
             int y = (int) (c.labelY * zoom + offY) + fm.getAscent() / 3;
             g.setColor(new Color(0, 0, 0, 150));
-            g.drawString(c.name, x + 1, y + 1);
+            g.drawString(c.displayName(), x + 1, y + 1);
             g.setColor(Color.WHITE);
-            g.drawString(c.name, x, y);
+            g.drawString(c.displayName(), x, y);
         }
     }
 
