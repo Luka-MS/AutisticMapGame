@@ -1,6 +1,6 @@
 # TODO
 
-Ideas and planned work for Map Game. Tick items off (`[x]`) as they are done.
+Ideas and planned work for Autistic Map Game. Tick items off (`[x]`) as they are done.
 
 ## Suggested order
 
@@ -37,6 +37,7 @@ Ideas and planned work for Map Game. Tick items off (`[x]`) as they are done.
 
 - [ ] **Scenarios and start dates:** real 1936 or 1914 starts with historical borders and nations.
 - [ ] **Difficulty settings** and a nation picker screen with stats and an AI aggressiveness slider.
+- [ ] **Multiple languages:** a language setting in the main menu. Besides English: German, Serbo-Croatian and Russian. Needs all UI texts moved into language files (e.g. `res/mapgame/lang/en.properties`, `de`, `sh`, `ru`), UTF-8 and Cyrillic font support, and translated log messages.
 - [ ] **Sound and music**, nicer map rendering (terrain textures, rivers, smooth borders), animated battles.
 - [ ] **Multiplayer:** hotseat first, online later.
 - [ ] **Mod support:** load custom maps, nations and scenarios from files.
