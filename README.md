@@ -42,6 +42,17 @@ This builds the project, packs it into a runnable jar, then uses `jpackage` (bun
 
 Pushing a tag like `v1.0.0` triggers [`.github/workflows/release.yml`](.github/workflows/release.yml), which runs the same packaging step on GitHub Actions and attaches the zip to the corresponding GitHub Release automatically.
 
+### Building a standalone macOS app (`.app`)
+
+On a Mac with JDK 17 or newer, run:
+
+```bash
+chmod +x package-macos.sh
+./package-macos.sh 1.0.0
+```
+
+This creates `out/dist/AutisticMapGame-Version-1.0.0.app`, including a private Java runtime, and `out/dist/AutisticMapGame-Version-1.0.0-mac.zip` for distribution. Players can unzip the archive and move the app to Applications; they do not need Java installed. The app is currently unsigned, so macOS may require the player to Control-click the app and choose **Open** the first time. A tagged release also produces this macOS zip automatically.
+
 ## How to play
 
 1. Choose a world in the main menu. *Random world* shows its preview first (use *Re-roll* for another one) and you play exactly that map.
@@ -120,9 +131,10 @@ src/mapgame
   tools/                          headless developer tools (SimCheck, BalanceCheck, SaveCheck)
 res/mapgame/data/world.txt        compact country and terrain geometry for the real maps
 tools/prepare_data.py             builds world.txt from Natural Earth GeoJSON
-build.ps1, run.ps1, package.ps1    build, run, and release-packaging scripts
-assets/icon.ico                    exe icon used by package.ps1
-.github/workflows/release.yml      CI: builds and attaches the Windows exe on tag push
+build.ps1, run.ps1, package.ps1    Windows build, run, and release-packaging scripts
+run.sh, package-macos.sh            macOS/Linux runner and macOS app packager
+assets/icon.ico                    Windows executable icon used by package.ps1
+.github/workflows/release.yml      CI: builds Windows and macOS release archives on tag push
 ```
 
 ## Development
