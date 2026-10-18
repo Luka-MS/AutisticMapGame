@@ -29,6 +29,16 @@ Requirements: a JDK 17 or newer (developed on JDK 25) and PowerShell on Windows.
 
 To compile manually: `javac -d out\classes (Get-ChildItem src -Recurse -Filter *.java).FullName`, copy `res\*` into `out\classes`, then run `java -cp out\classes mapgame.Main`.
 
+### Building a standalone Windows release (.exe)
+
+```powershell
+.\package.ps1 -Version 1.0.0
+```
+
+This builds the project, packs it into a runnable jar, then uses `jpackage` (bundled with the JDK) to produce a self-contained app image with its own private Java runtime under `out\dist\AutisticMapGame-Version-1.0.0\`, and zips it as `out\dist\AutisticMapGame-Version-1.0.0-win-x64.zip`. Players don't need Java installed to run the resulting `.exe`.
+
+Pushing a tag like `v1.0.0` triggers [`.github/workflows/release.yml`](.github/workflows/release.yml), which runs the same packaging step on GitHub Actions and attaches the zip to the corresponding GitHub Release automatically.
+
 ## How to play
 
 1. Choose a world in the main menu. *Random world* shows its preview first (use *Re-roll* for another one) and you play exactly that map.
@@ -106,7 +116,9 @@ src/mapgame
   tools/                          headless developer tools (SimCheck, BalanceCheck, SaveCheck)
 res/mapgame/data/world.txt        compact country and terrain geometry for the real maps
 tools/prepare_data.py             builds world.txt from Natural Earth GeoJSON
-build.ps1, run.ps1                build and run scripts
+build.ps1, run.ps1, package.ps1    build, run, and release-packaging scripts
+assets/icon.ico                    exe icon used by package.ps1
+.github/workflows/release.yml      CI: builds and attaches the Windows exe on tag push
 ```
 
 ## Development
