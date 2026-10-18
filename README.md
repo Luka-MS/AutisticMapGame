@@ -7,6 +7,7 @@ Pick a nation, raise armies, declare wars and conquer the map - on a randomly ge
 
 - **Three worlds** chosen from a main menu: a procedurally generated random world, Europe, and the whole world with all of its real nations.
 - **Real maps** built from [Natural Earth](https://www.naturalearthdata.com/) data: real countries, borders and coastlines, terrain derived from real mountain ranges, deserts and tundra, and province population derived from real country populations (scaled for gameplay).
+- **Real regions:** Germany is split along its federal states (Bayern, Hessen, ...) and Russia along its oblasts, krais and republics. Their provinces carry the real names. A German state may hold several provinces on the big maps, while every Russian region is exactly one province (which keeps Russia from swamping the map with hundreds of provinces). The city states Berlin, Hamburg and Bremen (and similarly tiny regions) are merged into their surrounding region because they are too small to be provinces. More countries can be added in `SUBDIVIDE` in `tools/prepare_data.py` (`split` or `whole`).
 - **Province-based map** with up to ~2,000 provinces, a political and a terrain map mode, pan and zoom.
 - **Real-time calendar** starting in 1900 with pause and five game speeds.
 - **Economy:** population produces gold and manpower every month; armies cost upkeep.
@@ -129,7 +130,7 @@ src/mapgame
   ui/                             Swing user interface
     GameWindow, MainMenuPanel, MapPanel, MapRenderer, ArmyGroupDialog
   tools/                          headless developer tools (SimCheck, BalanceCheck, SaveCheck)
-res/mapgame/data/world.txt        compact country and terrain geometry for the real maps
+res/mapgame/data/world.txt        compact country, subdivision and terrain geometry for the real maps
 tools/prepare_data.py             builds world.txt from Natural Earth GeoJSON
 build.ps1, run.ps1, package.ps1    Windows build, run, and release-packaging scripts
 run.sh, package-macos.sh            macOS/Linux runner and macOS app packager
@@ -161,7 +162,7 @@ java -cp out\classes mapgame.tools.SimCheck <seed> <years> <outDir> [random|euro
 java -cp out\classes mapgame.tools.SimCheck 12345 20 out\check europe
 ```
 
-**Map data.** `res/mapgame/data/world.txt` is generated from the 50m Natural Earth country and geography-region data. To rebuild it (requires Python 3 and an internet connection):
+**Map data.** `res/mapgame/data/world.txt` is generated from the 50m Natural Earth country and geography-region data plus the 10m first-level subdivisions (states/provinces) of the countries listed in `SUBDIVIDE`. To rebuild it (requires Python 3 and an internet connection; the 10m file is about 40 MB and cached in `tools/cache`):
 
 ```powershell
 python tools\prepare_data.py

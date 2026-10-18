@@ -11,8 +11,12 @@ import java.util.List;
 
 /** Real-world geometry (Natural Earth) loaded from the bundled world.txt resource. */
 final class GeoData {
-    /** Rings are flat arrays of lon, lat pairs. */
-    record GeoCountry(String name, long population, List<double[]> rings) {
+    /** Rings are flat arrays of lon, lat pairs. subs are first-level subdivisions (e.g. German states), possibly empty. */
+    record GeoCountry(String name, long population, List<double[]> rings, List<GeoSub> subs) {
+    }
+
+    /** whole: the subdivision is exactly one province instead of being cut into several. */
+    record GeoSub(String name, boolean whole, List<double[]> rings) {
     }
 
     /** kind: M = mountains, D = desert, U = tundra. */
@@ -35,6 +39,7 @@ final class GeoData {
             if (in == null) throw new IllegalStateException("Missing resource /mapgame/data/world.txt - run build.ps1");
             BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
             List<double[]> rings = null;
+            GeoCountry country = null;
             String line;
             while ((line = reader.readLine()) != null) {
                 if (line.isEmpty()) continue;
@@ -42,7 +47,12 @@ final class GeoData {
                 switch (f[0]) {
                     case "C" -> {
                         rings = new ArrayList<>();
-                        data.countries.add(new GeoCountry(f[1], Long.parseLong(f[2]), rings));
+                        country = new GeoCountry(f[1], Long.parseLong(f[2]), rings, new ArrayList<>());
+                        data.countries.add(country);
+                    }
+                    case "S" -> {
+                        rings = new ArrayList<>();
+                        country.subs().add(new GeoSub(f[1], f.length > 2 && f[2].equals("whole"), rings));
                     }
                     case "T" -> {
                         rings = new ArrayList<>();

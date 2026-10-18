@@ -26,6 +26,8 @@ public final class RealMapGenerator {
     private static final int MIN_LAND_PIECE = 20;
     private static final int MIN_SEA_PIECE = 12;
     private static final int MIN_PROVINCE = 14;
+    /** Subdivisions (e.g. city states) smaller than this are merged into their biggest neighbour. */
+    private static final int MIN_SUBDIVISION = 40;
     private static final int MAX_CROSSINGS = 2;
 
     /** lon0/lat0: map centre, scale: pixels per radian, cell/seaCell: province size, strait: ferry range in pixels. */
@@ -46,10 +48,11 @@ public final class RealMapGenerator {
         Projection pr = new Projection(spec);
 
         int[] cls = rasterCountries(geo, pr);
+        Subdivisions subs = subdivide(geo, pr, cls);
         int[] comp = new int[W * H];
-        int pieces = cleanAndLabel(cls, comp);
+        int pieces = cleanAndLabel(cls, comp, subs);
 
-        List<double[]> seeds = placeSeeds(cls, comp, pieces, spec, rnd);
+        List<double[]> seeds = placeSeeds(cls, comp, pieces, spec, rnd, subs);
         int[] ids = new int[W * H];
         assign(seeds, comp, ids, spec.cell);
         seeds = dropTinyProvinces(seeds, comp, pieces, ids, spec.cell);
@@ -70,7 +73,7 @@ public final class RealMapGenerator {
         }
 
         assignTerrain(world, geo, pr, ids, cls, seed);
-        createCountries(world, geo, provCls, rnd);
+        createCountries(world, geo, provCls, subs, rnd);
         linkStraits(world, cls, comp, ids, spec.strait);
         for (Province p : provinces) {
             for (Province q : p.neighbors) if (p.isLand() && !q.isLand()) p.coastal = true;
@@ -154,6 +157,135 @@ public final class RealMapGenerator {
         return cls;
     }
 
+    // ---------------------------------------------------------------- subdivisions
+
+    /** Subdivisions are numbered after the country classes: class = countries + 1 + index. */
+    private static final class Subdivisions {
+        final int countries;
+        final List<String> names = new ArrayList<>();
+        final List<Integer> owners = new ArrayList<>();
+        final List<Boolean> whole = new ArrayList<>();
+
+        Subdivisions(int countries) {
+            this.countries = countries;
+        }
+
+        int add(int ownerClass, String name, boolean isWhole) {
+            names.add(name);
+            owners.add(ownerClass);
+            whole.add(isWhole);
+            return countries + names.size();
+        }
+
+        boolean isSub(int cls) {
+            return cls > countries;
+        }
+
+        boolean isWhole(int cls) {
+            return isSub(cls) && whole.get(cls - countries - 1);
+        }
+
+        int countryClass(int cls) {
+            return isSub(cls) ? owners.get(cls - countries - 1) : cls;
+        }
+
+        String name(int cls) {
+            return names.get(cls - countries - 1);
+        }
+    }
+
+    /** Splits countries that have subdivision data (e.g. German states) into one area per subdivision. */
+    private static Subdivisions subdivide(GeoData geo, Projection pr, int[] cls) {
+        Subdivisions subs = new Subdivisions(geo.countries.size());
+        BufferedImage img = new BufferedImage(W, H, BufferedImage.TYPE_INT_RGB);
+        int[] data = ((DataBufferInt) img.getRaster().getDataBuffer()).getData();
+        for (int i = 0; i < geo.countries.size(); i++) {
+            List<GeoData.GeoSub> list = geo.countries.get(i).subs();
+            if (list.isEmpty()) continue;
+            int own = i + 1;
+            Graphics2D g = plainGraphics(img);
+            g.setColor(Color.BLACK);
+            g.fillRect(0, 0, W, H);
+            for (GeoData.GeoSub sub : list) {
+                Path2D.Double p = path(sub.rings(), pr);
+                g.setColor(new Color(subs.add(own, sub.name(), sub.whole())));
+                g.fill(p);
+                g.draw(p);
+            }
+            g.dispose();
+            // The country outline stays authoritative: subdivision pixels outside of it are ignored.
+            for (int k = 0; k < cls.length; k++) {
+                int v = data[k] & 0xFFFFFF;
+                if (cls[k] == own && v != 0) cls[k] = v;
+            }
+            fillGaps(cls, subs, own);
+        }
+        mergeSmallSubdivisions(cls, subs);
+        return subs;
+    }
+
+    /** Country pixels that no subdivision covers (the two data sets differ slightly) join an adjacent subdivision. */
+    private static void fillGaps(int[] cls, Subdivisions subs, int own) {
+        for (int pass = 0; pass < 64; pass++) {
+            boolean changed = false;
+            for (int i = 0; i < cls.length; i++) {
+                if (cls[i] != own) continue;
+                int c = neighbourSubdivision(cls, i, own, subs);
+                if (c != 0) {
+                    cls[i] = c;
+                    changed = true;
+                }
+            }
+            if (!changed) return;
+        }
+    }
+
+    /** Class of a 4-neighbour of pixel i that is a subdivision of country own and differs from pixel i's class, or 0. */
+    private static int neighbourSubdivision(int[] cls, int i, int own, Subdivisions subs) {
+        int x = i % W, y = i / W;
+        int[] near = {x > 0 ? cls[i - 1] : 0, x < W - 1 ? cls[i + 1] : 0, y > 0 ? cls[i - W] : 0, y < H - 1 ? cls[i + W] : 0};
+        for (int c : near) {
+            if (c != cls[i] && subs.isSub(c) && subs.countryClass(c) == own) return c;
+        }
+        return 0;
+    }
+
+    /** City states and similar slivers are too small to be provinces: merge them into the neighbour sharing most border. */
+    private static void mergeSmallSubdivisions(int[] cls, Subdivisions subs) {
+        while (true) {
+            int[] size = new int[subs.names.size()];
+            Map<Long, Integer> shared = new HashMap<>();
+            for (int i = 0; i < cls.length; i++) {
+                int c = cls[i];
+                if (!subs.isSub(c)) continue;
+                size[c - subs.countries - 1]++;
+                int x = i % W, y = i / W;
+                for (int j : new int[] {x < W - 1 ? i + 1 : -1, y < H - 1 ? i + W : -1}) {
+                    if (j < 0 || cls[j] == c || !subs.isSub(cls[j]) || subs.countryClass(cls[j]) != subs.countryClass(c)) continue;
+                    shared.merge((long) c * cls.length + cls[j], 1, Integer::sum);
+                    shared.merge((long) cls[j] * cls.length + c, 1, Integer::sum);
+                }
+            }
+            int from = 0, into = 0, bestSize = Integer.MAX_VALUE;
+            for (int k = 0; k < size.length; k++) {
+                int c = subs.countries + 1 + k;
+                if (size[k] == 0 || size[k] >= MIN_SUBDIVISION || size[k] >= bestSize) continue;
+                int target = 0, edge = 0;
+                for (Map.Entry<Long, Integer> e : shared.entrySet()) {
+                    if (e.getKey() / cls.length != c || e.getValue() <= edge) continue;
+                    edge = e.getValue();
+                    target = (int) (e.getKey() % cls.length);
+                }
+                if (target == 0) continue;
+                from = c;
+                into = target;
+                bestSize = size[k];
+            }
+            if (from == 0) return;
+            for (int i = 0; i < cls.length; i++) if (cls[i] == from) cls[i] = into;
+        }
+    }
+
     // ---------------------------------------------------------------- connected pieces
 
     /** Labels 4-connected pieces of equal class; returns their number. */
@@ -192,7 +324,7 @@ public final class RealMapGenerator {
     }
 
     /** Removes specks (tiny islands, tiny holes) and labels the connected pieces. */
-    private static int cleanAndLabel(int[] cls, int[] comp) {
+    private static int cleanAndLabel(int[] cls, int[] comp, Subdivisions subs) {
         int count = label(cls, comp);
         int[] size = new int[count];
         for (int c : comp) size[c]++;
@@ -201,7 +333,8 @@ public final class RealMapGenerator {
             int c = comp[i];
             if (cls[i] != 0) {
                 if (size[c] < MIN_LAND_PIECE) {
-                    cls[i] = 0;
+                    // A fragment of a subdivision joins a neighbouring subdivision instead of turning into sea.
+                    cls[i] = subs.isSub(cls[i]) ? neighbourSubdivision(cls, i, subs.countryClass(cls[i]), subs) : 0;
                     changed = true;
                 }
             } else if (size[c] < MIN_SEA_PIECE) {
@@ -221,8 +354,8 @@ public final class RealMapGenerator {
 
     // ---------------------------------------------------------------- provinces
 
-    /** Seeds are {x, y, piece}. Every piece of land or sea gets at least one. */
-    private static List<double[]> placeSeeds(int[] cls, int[] comp, int pieces, Spec spec, Random rnd) {
+    /** Seeds are {x, y, piece}. Every piece of land or sea gets at least one; "whole" subdivisions get exactly one per piece. */
+    private static List<double[]> placeSeeds(int[] cls, int[] comp, int pieces, Spec spec, Random rnd, Subdivisions subs) {
         List<double[]> seeds = new ArrayList<>();
         boolean[] has = new boolean[pieces];
         for (boolean sea : new boolean[] {false, true}) {
@@ -232,7 +365,7 @@ public final class RealMapGenerator {
                     double x = (gx + 0.15 + 0.7 * rnd.nextDouble()) * cell, y = (gy + 0.15 + 0.7 * rnd.nextDouble()) * cell;
                     if (x >= W || y >= H) continue;
                     int idx = (int) y * W + (int) x;
-                    if ((cls[idx] == 0) != sea) continue;
+                    if ((cls[idx] == 0) != sea || subs.isWhole(cls[idx])) continue;
                     seeds.add(new double[] {x, y, comp[idx]});
                     has[comp[idx]] = true;
                 }
@@ -394,13 +527,14 @@ public final class RealMapGenerator {
         };
     }
 
-    private static void createCountries(World world, GeoData geo, int[] provCls, Random rnd) {
+    private static void createCountries(World world, GeoData geo, int[] provCls, Subdivisions subs, Random rnd) {
         Map<Integer, List<Province>> byCountry = new HashMap<>();
         for (Province p : world.provinces) {
-            if (p.isLand()) byCountry.computeIfAbsent(provCls[p.id], k -> new ArrayList<>()).add(p);
+            if (p.isLand()) byCountry.computeIfAbsent(subs.countryClass(provCls[p.id]), k -> new ArrayList<>()).add(p);
         }
         Names names = new Names(rnd);
         for (Province p : world.provinces) p.name = names.province();
+        nameSubdivisions(world, provCls, subs);
 
         List<Integer> order = new ArrayList<>(byCountry.keySet());
         order.sort(Comparator.comparingInt((Integer k) -> -byCountry.get(k).size()).thenComparingInt(k -> k));
@@ -423,6 +557,20 @@ public final class RealMapGenerator {
             world.countries.add(c);
             for (Province p : provs) world.setOwner(p, c);
             c.capital = pickCapital(provs);
+        }
+    }
+
+    /** Provinces inside a real subdivision carry its name; the biggest one is plain, further ones are numbered. */
+    private static void nameSubdivisions(World world, int[] provCls, Subdivisions subs) {
+        Map<Integer, List<Province>> bySub = new HashMap<>();
+        for (Province p : world.provinces) {
+            if (p.isLand() && subs.isSub(provCls[p.id])) bySub.computeIfAbsent(provCls[p.id], k -> new ArrayList<>()).add(p);
+        }
+        for (Map.Entry<Integer, List<Province>> e : bySub.entrySet()) {
+            List<Province> list = e.getValue();
+            list.sort(Comparator.comparingInt((Province p) -> -p.pixels).thenComparingInt(p -> p.id));
+            String name = subs.name(e.getKey());
+            for (int k = 0; k < list.size(); k++) list.get(k).name = k == 0 ? name : name + " " + (k + 1);
         }
     }
 
