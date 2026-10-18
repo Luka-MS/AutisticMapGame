@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
+import mapgame.i18n.I18n;
 import mapgame.model.Army;
 import mapgame.model.ArmyGroup;
 import mapgame.model.Country;
@@ -48,7 +49,7 @@ public final class SaveFile {
         } catch (IOException e) {
             throw e;
         } catch (RuntimeException e) {
-            throw new IOException("The save file is damaged or from an incompatible version.", e);
+            throw new IOException(I18n.tr("save.damaged"), e);
         }
     }
 
@@ -109,7 +110,7 @@ public final class SaveFile {
         for (ArmyGroup grp : g.groups) {
             out.writeInt(grp.id);
             out.writeInt(grp.owner.id);
-            out.writeUTF(grp.name);
+            out.writeUTF(grp.name == null ? "" : grp.name);
             out.writeInt(grp.target == null ? -1 : grp.target.id);
             out.writeInt(grp.stance.ordinal());
             out.writeUTF(grp.status);
@@ -128,9 +129,9 @@ public final class SaveFile {
     // ---------------------------------------------------------------- reading
 
     private static Game read(DataInputStream in) throws IOException {
-        if (in.readInt() != MAGIC) throw new IOException("This is not a Map Game save file.");
+        if (in.readInt() != MAGIC) throw new IOException(I18n.tr("save.invalid"));
         int version = in.readInt();
-        if (version != VERSION) throw new IOException("Unsupported save version " + version + ".");
+        if (version != VERSION) throw new IOException(I18n.tr("save.version", version));
         MapKind kind = MapKind.valueOf(in.readUTF());
         long seed = in.readLong();
         int fingerprint = in.readInt();
@@ -139,7 +140,7 @@ public final class SaveFile {
         Game g = Game.create(kind, seed);
         if (Arrays.hashCode(g.world.ids) != fingerprint || g.world.provinces.size() != provinceCount
                 || g.world.countries.size() != countryCount) {
-            throw new IOException("The map of this save can no longer be recreated (the game was updated).");
+            throw new IOException(I18n.tr("save.map"));
         }
 
         g.day = in.readInt();
@@ -192,7 +193,9 @@ public final class SaveFile {
         for (int i = 0; i < groups; i++) {
             int id = in.readInt();
             ArmyGroup grp = new ArmyGroup(id, g.world.countries.get(in.readInt()));
-            grp.name = in.readUTF();
+            String name = in.readUTF();
+            // Default names follow the language setting instead of being frozen in the save.
+            grp.name = name.isEmpty() || name.matches("Army Group \\d+") ? null : name;
             int target = in.readInt();
             grp.target = target < 0 ? null : g.world.countries.get(target);
             grp.stance = ArmyGroup.Stance.values()[in.readInt()];
