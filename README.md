@@ -1,4 +1,4 @@
-# Map Game
+# Autistic Map Game
 
 A real-time grand-strategy map game written in plain Java (Swing, no external dependencies), inspired by *Hearts of Iron* and *Age of History*.
 Pick a nation, raise armies, declare wars and conquer the map - on a randomly generated world, on Europe or on the whole Earth with real borders.
@@ -13,6 +13,9 @@ Pick a nation, raise armies, declare wars and conquer the map - on a randomly ge
 - **Armies:** pathfinding by terrain travel time, battles with terrain defence bonuses, retreats, occupation of provinces, merging and splitting of armies.
 - **Army groups with fronts** (Hearts of Iron style): assign armies to a group, pick an enemy and a stance, and the group spreads its men evenly along the front by itself.
 - **Diplomacy:** declare war, propose peace (decided by war score), post-war truces, and **total war** that can never end in peace.
+- **Balanced peace deals:** in a normal war the winner takes at most 35% of the loser's provinces and nobody loses their last province; a nation without any land left capitulates. Only a total war can wipe a nation out. This keeps the AI world dynamic without snowballing or mass extinction.
+- **Save / load** with quick save (F5), quick load (F9), a file dialog, a yearly autosave and a *Load game* button in the main menu.
+- **Languages:** English, German, Serbo-Croatian in Croatian wording (Latin and Cyrillic script) and Russian, switchable in the main menu at any time. The choice is remembered. Texts live in `res/mapgame/lang/*.properties`; the Cyrillic Serbo-Croatian texts are generated from `sh.properties` (text in `{braces}` stays Latin). Names of the real countries (Europe and World maps) are translated via `res/mapgame/lang/countries.tsv`; invented nations and province names stay as generated.
 - **AI nations** that recruit, attack, make peace and declare wars.
 - **Sea crossings:** islands are linked to the mainland over narrow straits (e.g. UK-France, Japan-Korea) as long as there is no navy.
 
@@ -25,7 +28,19 @@ Requirements: a JDK 17 or newer (developed on JDK 25) and PowerShell on Windows.
 .\run.ps1     # starts the game
 ```
 
+On macOS or Linux, run `./run.sh` instead. It builds the game on first use (and whenever the sources changed) and starts it. Right-click (marching orders) is ctrl-click or a two-finger click on a Mac trackpad.
+
 To compile manually: `javac -d out\classes (Get-ChildItem src -Recurse -Filter *.java).FullName`, copy `res\*` into `out\classes`, then run `java -cp out\classes mapgame.Main`.
+
+### Building a standalone Windows release (.exe)
+
+```powershell
+.\package.ps1 -Version 1.0.0
+```
+
+This builds the project, packs it into a runnable jar, then uses `jpackage` (bundled with the JDK) to produce a self-contained app image with its own private Java runtime under `out\dist\AutisticMapGame-Version-1.0.0\`, and zips it as `out\dist\AutisticMapGame-Version-1.0.0-win-x64.zip`. Players don't need Java installed to run the resulting `.exe`.
+
+Pushing a tag like `v1.0.0` triggers [`.github/workflows/release.yml`](.github/workflows/release.yml), which runs the same packaging step on GitHub Actions and attaches the zip to the corresponding GitHub Release automatically.
 
 ## How to play
 
@@ -34,15 +49,17 @@ To compile manually: `javac -d out\classes (Get-ChildItem src -Recurse -Filter *
 3. Press **Space** to unpause and use **1-5** to change the speed.
 4. Select an army (click its counter or a province) and **right-click** a province to march there.
 5. An army must stay for a few days in an enemy province to occupy it. Occupied provinces are drawn with stripes in the occupier's colour.
-6. Use the side panel to recruit armies, declare war and propose peace. A peace treaty hands every occupied province to its occupier. A nation that loses all of its own provinces is eliminated; you lose when your nation is eliminated and win when you are the last one left.
+6. Use the side panel to recruit armies, declare war and propose peace. A peace treaty hands the winner some of the occupied provinces (at most 35% of the loser's land, the rest is returned). A nation that loses all of its own land capitulates and survives with the rest; only a **total war** eliminates a nation. You lose when your nation is eliminated and win when you are the last one left.
+7. Save with **F5** (quick save) or the *Save* button, load with **F9** or the *Load* button. The game also autosaves every year. Saves are stored in the `saves` folder next to the game.
 
 ### Controls
 
 | Input | Action |
 |---|---|
 | Left-click | Select province / army |
-| Right-click | Send the selected army to a province |
-| Left-drag, arrow keys, WASD | Pan the map |
+| Right-click | Send the selected armies to a province |
+| Shift + left-drag | Draw a selection box around your armies |
+| Left-drag, right-drag, middle-drag, arrow keys, WASD | Pan the map |
 | Mouse wheel | Zoom |
 | Space | Pause / resume |
 | 1-5 | Game speed |
@@ -50,6 +67,7 @@ To compile manually: `javac -d out\classes (Get-ChildItem src -Recurse -Filter *
 | X | Split the selected army in half (the new army gets selected) |
 | C | Merge idle friendly armies in the same province into the selected one |
 | G | Open the army group window |
+| F5 / F9 | Quick save / quick load |
 | Esc | Deselect |
 
 The divider between the control menu and the log on the right can be dragged up and down to resize the log.
@@ -75,7 +93,7 @@ Army counters of a group carry a `G<number>` tag. The selected group shows its f
 
 ### Wars and total war
 
-- *Declare war* starts a normal war. Peace is accepted when the other side is not winning or when the war has dragged on for a long time.
+- *Declare war* starts a normal war. Peace is accepted when the other side is not winning or when the war has dragged on for a long time. The winner takes at most 35% of the loser's provinces, and a nation can never lose its last province in a normal war.
 - *Declare TOTAL war* starts a war that can never end in peace - not by you and not by the AI. It only ends when one of the two nations is eliminated. An existing war can be escalated to total war. The game asks for confirmation first.
 
 ## The worlds
@@ -96,18 +114,34 @@ src/mapgame
   model/                          world data and map generation
     MapGenerator, RealMapGenerator, GeoData, MapKind, World, Province, Country, Army, ArmyGroup, Terrain
   sim/                            game rules
-    Game, Ai, FrontPlanner
+    Game, Ai, FrontPlanner, SaveFile
   ui/                             Swing user interface
     GameWindow, MainMenuPanel, MapPanel, MapRenderer, ArmyGroupDialog
-  tools/SimCheck.java             headless AI-only simulation for testing
+  tools/                          headless developer tools (SimCheck, BalanceCheck, SaveCheck)
 res/mapgame/data/world.txt        compact country and terrain geometry for the real maps
 tools/prepare_data.py             builds world.txt from Natural Earth GeoJSON
-build.ps1, run.ps1                build and run scripts
+build.ps1, run.ps1, package.ps1    build, run, and release-packaging scripts
+assets/icon.ico                    exe icon used by package.ps1
+.github/workflows/release.yml      CI: builds and attaches the Windows exe on tag push
 ```
 
 ## Development
 
-**Headless simulation.** `SimCheck` generates a world, lets the AI play for some years and prints statistics. It also writes map images, which is handy for checking map generation and game balance:
+All tools are headless and run from `out\classes` after `.\build.ps1`.
+
+**AI balance.** `BalanceCheck` lets the AI play a number of years on several seeds and prints survivors, how much land changes hands, the size of the biggest nations and debt:
+
+```powershell
+java -cp out\classes mapgame.tools.BalanceCheck [random|europe|world|all] [seeds] [years]
+```
+
+**Save/load round trip.** `SaveCheck` saves a game, loads it, lets both run on and verifies that they stay identical (the map is recreated deterministically from map type and seed):
+
+```powershell
+java -cp out\classes mapgame.tools.SaveCheck
+```
+
+**Simulation and map images.** `SimCheck` generates a world, lets the AI play for some years, prints statistics and writes map images:
 
 ```powershell
 java -cp out\classes mapgame.tools.SimCheck <seed> <years> <outDir> [random|europe|world]
@@ -123,7 +157,7 @@ python tools\prepare_data.py
 
 ## Roadmap
 
-Navy and sea transport, alliances, fog of war, technology, buildings, provinces with unrest, save/load, real capitals and cities, automatic reinforcement for army groups, sound.
+Navy and sea transport, alliances, fog of war, technology, buildings, provinces with unrest, real capitals and cities, automatic reinforcement for army groups, sound.
 
 ## Credits and license
 

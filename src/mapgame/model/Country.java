@@ -2,6 +2,7 @@ package mapgame.model;
 
 import java.util.ArrayList;
 import java.util.List;
+import mapgame.i18n.I18n;
 
 public final class Country {
     public final int id;
@@ -17,6 +18,11 @@ public final class Country {
     public double labelX, labelY;
     /** AI countries will not start new wars before this day. */
     public int truceUntil;
+
+    /** The name in the current language; invented nations keep their generated name. */
+    public String displayName() {
+        return I18n.countryName(name);
+    }
 
     public Country(int id, String name, int rgb) {
         this.id = id;

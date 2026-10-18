@@ -3,6 +3,10 @@ out/
 *.class
 *.jar
 
+# Saved games
+saves/
+*.sav
+
 # Source data downloaded by tools/prepare_data.py (res/mapgame/data/world.txt IS tracked)
 tools/cache/
 

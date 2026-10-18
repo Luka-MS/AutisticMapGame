@@ -23,6 +23,7 @@ import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTextArea;
 import javax.swing.ListSelectionModel;
+import mapgame.i18n.I18n;
 import mapgame.model.Army;
 import mapgame.model.ArmyGroup;
 import mapgame.model.Country;
@@ -38,13 +39,13 @@ public final class ArmyGroupDialog extends JDialog {
     private final JComboBox<Country> targetBox = new JComboBox<>();
     private final JComboBox<ArmyGroup.Stance> stanceBox = new JComboBox<>(ArmyGroup.Stance.values());
     private final JTextArea statusArea = new JTextArea(6, 24);
-    private final JButton newBtn = new JButton("New group"), deleteBtn = new JButton("Delete group"),
-            addBtn = new JButton("Add selected army"), removeBtn = new JButton("Remove selected army"),
-            addAllBtn = new JButton("Add all free armies");
+    private final JButton newBtn = new JButton(), deleteBtn = new JButton(), addBtn = new JButton(),
+            removeBtn = new JButton(), addAllBtn = new JButton();
+    private final JLabel listLabel = new JLabel(), frontLabel = new JLabel(), ordersLabel = new JLabel(), help = new JLabel();
     private boolean updating;
 
     public ArmyGroupDialog(JFrame owner, MapPanel map) {
-        super(owner, "Army groups", false);
+        super(owner, "", false);
         this.map = map;
         setDefaultCloseOperation(HIDE_ON_CLOSE);
 
@@ -86,8 +87,11 @@ public final class ArmyGroupDialog extends JDialog {
         });
         addBtn.addActionListener(e -> {
             ArmyGroup g = list.getSelectedValue();
-            Army a = map.selectedArmy();
-            if (g != null && a != null && game.assignToGroup(g, a)) game.planGroup(g);
+            boolean added = false;
+            for (Army a : map.selectedArmies()) {
+                if (g != null && a.owner == game.player && game.assignToGroup(g, a)) added = true;
+            }
+            if (added) game.planGroup(g);
             refresh();
         });
         removeBtn.addActionListener(e -> {
@@ -120,16 +124,16 @@ public final class ArmyGroupDialog extends JDialog {
         JPanel form = new JPanel();
         form.setLayout(new BoxLayout(form, BoxLayout.Y_AXIS));
         form.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
-        form.add(left(new JLabel("Army groups")));
+        form.add(left(listLabel));
         form.add(Box.createVerticalStrut(4));
         form.add(left(listScroll));
         form.add(Box.createVerticalStrut(6));
         form.add(left(groupButtons));
         form.add(Box.createVerticalStrut(10));
-        form.add(left(new JLabel("Front against:")));
+        form.add(left(frontLabel));
         form.add(left(targetBox));
         form.add(Box.createVerticalStrut(6));
-        form.add(left(new JLabel("Orders:")));
+        form.add(left(ordersLabel));
         form.add(left(stanceBox));
         form.add(Box.createVerticalStrut(10));
         form.add(left(armyButtons));
@@ -138,16 +142,32 @@ public final class ArmyGroupDialog extends JDialog {
         form.add(Box.createVerticalStrut(10));
         form.add(left(new JScrollPane(statusArea)));
 
-        JLabel help = new JLabel("<html>The group spreads its men evenly over the front, splits armies "
-                + "to cover it and attacks or defends automatically. Giving a manual move order to an army "
-                + "removes it from its group.</html>");
         help.setBorder(BorderFactory.createEmptyBorder(0, 10, 10, 10));
         setLayout(new BorderLayout());
         add(form, BorderLayout.CENTER);
         add(help, BorderLayout.SOUTH);
-        setPreferredSize(new Dimension(380, 620));
+        I18n.addListener(this::applyLanguage);
+        applyLanguage();
+        setPreferredSize(new Dimension(380, 660));
         pack();
         setLocationRelativeTo(owner);
+    }
+
+    private void applyLanguage() {
+        setTitle(I18n.tr("group.title"));
+        listLabel.setText(I18n.tr("group.list"));
+        frontLabel.setText(I18n.tr("group.front"));
+        ordersLabel.setText(I18n.tr("group.orders"));
+        newBtn.setText(I18n.tr("group.new"));
+        deleteBtn.setText(I18n.tr("group.delete"));
+        addBtn.setText(I18n.tr("group.add"));
+        removeBtn.setText(I18n.tr("group.remove"));
+        addAllBtn.setText(I18n.tr("group.addall"));
+        help.setText(I18n.tr("group.help"));
+        refresh();
+        list.repaint();
+        targetBox.repaint();
+        stanceBox.repaint();
     }
 
     public void bind(Game g) {
@@ -201,12 +221,13 @@ public final class ArmyGroupDialog extends JDialog {
 
             if (g == null) {
                 targetBox.setSelectedItem(null);
-                setStatus("Create a group with 'New group', then pick a front.");
+                setStatus(I18n.tr("group.hint"));
                 map.setShownGroup(null);
             } else {
                 targetBox.setSelectedItem(items.contains(g.target) ? g.target : null);
                 stanceBox.setSelectedItem(g.stance);
-                setStatus(String.format("%s%n%nArmies: %d   Men: %,d%n%s", g.name, g.armies.size(), g.strength(), g.status));
+                setStatus(I18n.tr("group.status", g.displayName(), g.armies.size(), g.strength(),
+                        g.status.isEmpty() ? I18n.tr("group.status.nofront") : g.status));
                 map.setShownGroup(isVisible() ? g : null);
             }
             list.repaint();
@@ -237,10 +258,10 @@ public final class ArmyGroupDialog extends JDialog {
         @Override
         public Component getListCellRendererComponent(JList<?> l, Object v, int i, boolean sel, boolean focus) {
             String text;
-            if (v == null) text = "- none -";
-            else if (v instanceof ArmyGroup g) text = g.name + "  (" + g.armies.size() + " armies, " + String.format("%,d", g.strength()) + " men)";
-            else if (v instanceof Country c) text = c.name;
-            else if (v instanceof ArmyGroup.Stance s) text = s.label;
+            if (v == null) text = I18n.tr("group.none");
+            else if (v instanceof ArmyGroup g) text = I18n.tr("group.item", g.displayName(), g.armies.size(), g.strength());
+            else if (v instanceof Country c) text = c.displayName();
+            else if (v instanceof ArmyGroup.Stance s) text = s.label();
             else text = v.toString();
             return super.getListCellRendererComponent(l, text, i, sel, focus);
         }
