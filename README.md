@@ -171,7 +171,7 @@ python tools\prepare_data.py
 
 ## Roadmap
 
-Navy and sea transport, alliances, fog of war, technology, buildings, provinces with unrest, automatic reinforcement for army groups, sound.
+Navy and sea transport, buildings, technology, provinces with unrest, generals and morale, events and decisions, scenarios, difficulty settings, sound. See [TODO.md](TODO.md) for the full list.
 
 ## Credits and license
 
