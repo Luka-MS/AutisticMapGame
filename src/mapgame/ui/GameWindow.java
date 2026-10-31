@@ -26,6 +26,7 @@ import javax.swing.ButtonGroup;
 import javax.swing.DefaultListCellRenderer;
 import javax.swing.DefaultListModel;
 import javax.swing.JButton;
+import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JFileChooser;
 import javax.swing.JFrame;
@@ -48,6 +49,7 @@ import javax.swing.Timer;
 import javax.swing.filechooser.FileNameExtensionFilter;
 import mapgame.i18n.I18n;
 import mapgame.model.Army;
+import mapgame.model.ArmyType;
 import mapgame.model.Country;
 import mapgame.model.MapKind;
 import mapgame.model.Province;
@@ -71,6 +73,7 @@ public final class GameWindow extends JFrame {
     private final JPanel root = new JPanel(cards);
     private final MainMenuPanel menu;
     private final JTabbedPane logTabs = new JTabbedPane();
+    private final JComboBox<ArmyType> typeBox = new JComboBox<>(ArmyType.values());
     private final DefaultListModel<Game.Event> eventModel = new DefaultListModel<>();
     private final JList<Game.Event> eventList = new JList<>(eventModel);
     private int unreadEvents;
@@ -136,9 +139,18 @@ public final class GameWindow extends JFrame {
         groupsBtn.addActionListener(e -> showGroups());
         recruitBtn.addActionListener(e -> {
             Province p = map.selectedProvince();
-            if (p != null && game.recruit(game.player, p) == null) game.log(I18n.tr("log.cannot.recruit"));
+            if (p != null && game.recruit(game.player, p, (ArmyType) typeBox.getSelectedItem()) == null) game.log(I18n.tr("log.cannot.recruit"));
             refresh();
         });
+        typeBox.setFocusable(false);
+        typeBox.setRenderer(new DefaultListCellRenderer() {
+            @Override
+            public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean selected, boolean focus) {
+                ArmyType t = (ArmyType) value;
+                return super.getListCellRendererComponent(list, I18n.tr("unit.item", t.label(), Game.recruitGold(t)), index, selected, focus);
+            }
+        });
+        typeBox.addActionListener(e -> refresh());
         splitBtn.addActionListener(e -> splitSelected());
         mergeBtn.addActionListener(e -> mergeSelected());
         warBtn.addActionListener(e -> {
@@ -391,7 +403,7 @@ public final class GameWindow extends JFrame {
 
         JPanel buttons = new JPanel();
         buttons.setLayout(new BoxLayout(buttons, BoxLayout.Y_AXIS));
-        for (JButton b : new JButton[] {startBtn, recruitBtn, splitBtn, mergeBtn, groupsBtn, warBtn, totalWarBtn, peaceBtn, allianceBtn}) buttons.add(left(b));
+        for (JComponent b : new JComponent[] {startBtn, typeBox, recruitBtn, splitBtn, mergeBtn, groupsBtn, warBtn, totalWarBtn, peaceBtn, allianceBtn}) buttons.add(left(b));
 
         JPanel top = new WidthTrackingPanel(new BorderLayout(0, 6));
         top.setBorder(BorderFactory.createEmptyBorder(8, 8, 4, 8));
@@ -515,6 +527,7 @@ public final class GameWindow extends JFrame {
         loadBtn.setText(I18n.tr("btn.load"));
         updateModeText();
         updateTabTitles();
+        typeBox.repaint();
         eventList.repaint();
         map.repaint();
         refresh();
@@ -616,7 +629,11 @@ public final class GameWindow extends JFrame {
         boolean playing = started && me != null;
         boolean own = playing && sel != null && sel.owner == me && sel.controller == me;
         boolean foreign = playing && sel != null && sel.owner != null && sel.owner != me;
-        recruitBtn.setEnabled(own && me.gold >= Game.RECRUIT_GOLD && me.manpower >= Game.RECRUIT_MEN);
+        ArmyType recruitType = (ArmyType) typeBox.getSelectedItem();
+        int recruitGold = Game.recruitGold(recruitType);
+        recruitBtn.setText(I18n.tr("btn.recruit", recruitGold, Game.RECRUIT_MEN));
+        recruitBtn.setEnabled(own && me.gold >= recruitGold && me.manpower >= Game.RECRUIT_MEN);
+        typeBox.setEnabled(playing);
         Army sa = map.selectedArmy();
         boolean mine = playerArmy(sa);
         splitBtn.setEnabled(mine && game.canSplit(sa));
@@ -682,6 +699,7 @@ public final class GameWindow extends JFrame {
                 sb.append("\n\n").append(I18n.tr("info.army", a.owner.displayName(), a.strength, state));
                 double loss = game.attritionRate(a) * 6 * 100;
                 sb.append('\n').append(loss <= 0 ? I18n.tr("info.supply.ok") : I18n.tr("info.supply.bad", loss));
+                sb.append('\n').append(I18n.tr("info.army.type", a.type.label(), (int) a.experience));
             }
             if (a.group != null) sb.append('\n').append(I18n.tr("info.group", a.group.displayName()));
         }
@@ -757,7 +775,7 @@ public final class GameWindow extends JFrame {
 
     private static JComponent left(JComponent c) {
         c.setAlignmentX(Component.LEFT_ALIGNMENT);
-        if (c instanceof JButton) c.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
+        if (c instanceof JButton || c instanceof JComboBox) c.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
         return c;
     }
 }

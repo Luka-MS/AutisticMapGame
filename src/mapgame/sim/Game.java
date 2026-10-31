@@ -17,6 +17,7 @@ import java.util.function.Predicate;
 import mapgame.i18n.I18n;
 import mapgame.model.Army;
 import mapgame.model.ArmyGroup;
+import mapgame.model.ArmyType;
 import mapgame.model.Country;
 import mapgame.model.MapGenerator;
 import mapgame.model.MapKind;
@@ -379,7 +380,9 @@ public final class Game {
     }
 
     public double monthlyUpkeep(Country c) {
-        return strength(c) * UPKEEP_PER_MAN;
+        double u = 0;
+        for (Army a : armies) if (a.owner == c) u += a.strength * UPKEEP_PER_MAN * a.type.upkeepFactor;
+        return u;
     }
 
     public int monthlyManpower(Country c) {
@@ -391,11 +394,21 @@ public final class Game {
     // ---------------------------------------------------------------- orders
 
     public Army recruit(Country c, Province p) {
+        return recruit(c, p, ArmyType.INFANTRY);
+    }
+
+    /** Gold a fresh army of this type costs. */
+    public static int recruitGold(ArmyType type) {
+        return (int) Math.ceil(RECRUIT_GOLD * type.goldFactor);
+    }
+
+    public Army recruit(Country c, Province p, ArmyType type) {
         if (!p.isLand() || p.owner != c || p.controller != c) return null;
-        if (c.gold < RECRUIT_GOLD || c.manpower < RECRUIT_MEN) return null;
-        c.gold -= RECRUIT_GOLD;
+        int gold = recruitGold(type);
+        if (c.gold < gold || c.manpower < RECRUIT_MEN) return null;
+        c.gold -= gold;
         c.manpower -= RECRUIT_MEN;
-        Army a = new Army(nextArmyId++, c, p, RECRUIT_MEN);
+        Army a = new Army(nextArmyId++, c, p, RECRUIT_MEN, type);
         armies.add(a);
         return a;
     }
@@ -409,7 +422,8 @@ public final class Game {
         if (!canSplit(a)) return null;
         int half = a.strength / 2;
         a.strength -= half;
-        Army n = new Army(nextArmyId++, a.owner, a.location, half);
+        Army n = new Army(nextArmyId++, a.owner, a.location, half, a.type);
+        n.experience = a.experience;
         armies.add(n);
         if (a.group != null) assignToGroup(a.group, n);
         return n;
@@ -423,13 +437,13 @@ public final class Game {
         return n;
     }
 
-    /** Merges all idle friendly armies in the same province into {@code a}. */
+    /** Merges all idle friendly armies of the same type in the same province into {@code a}. */
     public int mergeStack(Army a) {
         int merged = 0;
         if (a == null || a.dead || a.progress != 0) return 0;
         for (Army o : armies) {
             if (!isMergeable(a, o)) continue;
-            a.strength += o.strength;
+            a.absorb(o);
             if (a.group == null && o.group != null) assignToGroup(o.group, a);
             o.dead = true;
             merged++;
@@ -439,7 +453,7 @@ public final class Game {
     }
 
     private static boolean isMergeable(Army a, Army o) {
-        return o != a && !o.dead && o.owner == a.owner && o.location == a.location && o.path.isEmpty();
+        return o != a && !o.dead && o.owner == a.owner && o.type == a.type && o.location == a.location && o.path.isEmpty();
     }
 
     // ---------------------------------------------------------------- army groups
@@ -489,12 +503,13 @@ public final class Game {
         for (Army a : grp.armies) {
             if (deficit <= 0) break;
             if (a.dead || a.location.controller != c || a.location.owner != c || isEngaged(a)) continue;
-            int affordable = (int) (Math.max(0, c.gold - RESERVE_GOLD) / GOLD_PER_MAN);
+            int rate = Math.max(1, (int) Math.ceil(GOLD_PER_MAN * a.type.goldFactor * 1000));
+            int affordable = (int) (Math.max(0, c.gold - RESERVE_GOLD) * 1000 / rate);
             int add = Math.min(Math.min(REFILL_STEP, deficit), Math.min(c.manpower, affordable));
             if (add <= 0) return;
-            a.strength += add;
+            a.addMen(add);
             c.manpower -= add;
-            c.gold -= add * GOLD_PER_MAN;
+            c.gold -= add * rate / 1000.0;
             deficit -= add;
         }
         if (deficit < RECRUIT_MEN || c.gold < RECRUIT_GOLD + RESERVE_GOLD || c.manpower < RECRUIT_MEN) return;
@@ -696,7 +711,7 @@ public final class Game {
                 a.clearPath();
                 continue;
             }
-            a.progress += 1;
+            a.progress += a.type.speed;
             if (a.progress >= next.travelDays(a.location)) {
                 a.moveTo(next);
                 a.path.poll();
@@ -715,21 +730,36 @@ public final class Game {
             Province prov = e.getKey();
             double[] dmg = new double[list.size()];
             for (int i = 0; i < list.size(); i++) {
+                Army target = list.get(i);
+                double vulnerability = target.type.vulnerability * target.toughness();
+                // Guns standing next to friendly foot soldiers are screened.
+                if (target.type == ArmyType.ARTILLERY && screened(list, target)) vulnerability = target.toughness();
                 for (int j = 0; j < list.size(); j++) {
-                    if (i == j || !atWar(list.get(i).owner, list.get(j).owner)) continue;
-                    double d = list.get(j).strength * 0.04 * (0.8 + 0.4 * rnd.nextDouble());
-                    if (list.get(i).owner == prov.controller) d /= prov.terrain.defense;
-                    dmg[i] += d;
+                    Army striker = list.get(j);
+                    if (i == j || !atWar(target.owner, striker.owner)) continue;
+                    double d = striker.strength * 0.04 * (0.8 + 0.4 * rnd.nextDouble());
+                    d *= striker.type.attackOn(prov.terrain) * striker.attackBonus();
+                    if (target.owner == prov.controller) d /= prov.terrain.defense;
+                    dmg[i] += d * vulnerability;
                 }
             }
             for (int i = 0; i < list.size(); i++) {
                 if (dmg[i] <= 0) continue;
                 Army a = list.get(i);
                 a.strength -= Math.max(1, (int) dmg[i]);
+                a.experience = Math.min(Army.MAX_EXPERIENCE, a.experience + EXPERIENCE_PER_BATTLE_DAY);
                 if (a.strength < 100) broken.add(a);
             }
         }
         for (Army a : broken) retreat(a);
+    }
+
+    /** Experience points an army gains per day of fighting. */
+    public static final double EXPERIENCE_PER_BATTLE_DAY = 1.0;
+
+    private static boolean screened(List<Army> stack, Army gun) {
+        for (Army o : stack) if (o != gun && o.owner == gun.owner && o.type == ArmyType.INFANTRY) return true;
+        return false;
     }
 
     private void retreat(Army a) {
@@ -759,12 +789,12 @@ public final class Game {
         for (Army a : armies) {
             // The player's armies only merge on request so they can be split across provinces.
             if (a.dead || !a.path.isEmpty() || a.owner == player) continue;
-            long k = ((long) a.location.id << 32) | a.owner.id;
+            long k = ((long) a.location.id << 32) | ((long) a.owner.id << 4) | a.type.ordinal();
             Army host = stacks.get(k);
             if (host == null) {
                 stacks.put(k, a);
             } else {
-                host.strength += a.strength;
+                host.absorb(a);
                 a.dead = true;
             }
         }

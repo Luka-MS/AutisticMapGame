@@ -17,6 +17,7 @@ import java.util.zip.GZIPOutputStream;
 import mapgame.i18n.I18n;
 import mapgame.model.Army;
 import mapgame.model.ArmyGroup;
+import mapgame.model.ArmyType;
 import mapgame.model.Country;
 import mapgame.model.MapKind;
 import mapgame.model.Province;
@@ -28,8 +29,8 @@ import mapgame.model.Province;
 public final class SaveFile {
     public static final String EXTENSION = ".sav";
     private static final int MAGIC = 0x4D47534D;
-    /** 2: conquest day. 3: capitals. 4: army group reinforcement. 5: alliances. Older versions can still be read. */
-    private static final int VERSION = 5;
+    /** 2: conquest day. 3: capitals. 4: group reinforcement. 5: alliances. 6: army types. Older versions can still be read. */
+    private static final int VERSION = 6;
 
     private SaveFile() {
     }
@@ -107,6 +108,8 @@ public final class SaveFile {
             out.writeInt(a.strength);
             out.writeDouble(a.progress);
             out.writeInt(a.daysHere);
+            out.writeInt(a.type.ordinal());
+            out.writeDouble(a.experience);
             out.writeInt(a.path.size());
             for (Province p : a.path) out.writeInt(p.id);
         }
@@ -199,6 +202,10 @@ public final class SaveFile {
             Army a = new Army(id, owner, location, in.readInt());
             a.progress = in.readDouble();
             a.daysHere = in.readInt();
+            if (version >= 6) {
+                a.type = ArmyType.values()[in.readInt()];
+                a.experience = in.readDouble();
+            }
             int pathLength = in.readInt();
             for (int k = 0; k < pathLength; k++) a.path.add(g.world.provinces.get(in.readInt()));
             g.armies.add(a);

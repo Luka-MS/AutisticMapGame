@@ -34,6 +34,7 @@ public final class SelfTest {
         run("supply and attrition", SelfTest::supply);
         run("group reinforcement", SelfTest::reinforcement);
         run("front planner", SelfTest::frontPlanner);
+        run("army types and experience", SelfTest::armyTypes);
         run("save and load", SelfTest::saveLoad);
         System.out.printf("%d checks, %d failed%n", checks, failures);
         System.exit(failures == 0 ? 0 : 1);
@@ -236,6 +237,42 @@ public final class SelfTest {
         boolean moving = false;
         for (Army x : grp.armies) moving |= !x.path.isEmpty() || grp.slots.containsKey(x);
         check(moving, "the group's armies get orders");
+    }
+
+    private static void armyTypes() {
+        Game g = newGame();
+        Province[] b = border(g);
+        Country a = b[0].owner, o = b[1].owner;
+        g.player = a;
+        g.armies.clear();
+        g.declareWar(a, o);
+        Army inf = army(g, a, b[0], 1000), cav = army(g, a, b[0], 1000);
+        cav.type = mapgame.model.ArmyType.CAVALRY;
+        inf.setPath(List.of(b[1]));
+        cav.setPath(List.of(b[1]));
+        g.tickDay();
+        check(cav.progress > inf.progress, "cavalry marches faster than infantry");
+
+        g.armies.clear();
+        Army x = army(g, a, b[0], 1000), y = army(g, a, b[0], 1000), gun = army(g, a, b[0], 1000);
+        gun.type = mapgame.model.ArmyType.ARTILLERY;
+        x.experience = 40;
+        check(g.mergeCandidates(x) == 1, "only armies of the same type can merge");
+        g.mergeStack(x);
+        check(x.strength == 2000 && x.experience == 20, "merging adds the men and averages the experience");
+        check(!gun.dead, "artillery stays separate");
+
+        g.armies.clear();
+        Army defender = army(g, o, b[0], 1500), shooter = army(g, a, b[0], 1500);
+        g.declareWar(a, o);
+        for (int i = 0; i < 3; i++) g.tickDay();
+        check(defender.experience > 0 && shooter.experience > 0, "fighting armies gain experience");
+
+        Army vet = new Army(5, a, b[0], 1000), green = new Army(6, a, b[0], 1000);
+        vet.experience = 80;
+        check(vet.attackBonus() > green.attackBonus() && vet.toughness() < green.toughness(), "veterans hit harder and take less damage");
+        vet.addMen(1000);
+        check(vet.experience == 40, "new men water down experience");
     }
 
     private static void saveLoad() throws IOException {

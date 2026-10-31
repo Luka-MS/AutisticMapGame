@@ -32,6 +32,7 @@ import javax.swing.ToolTipManager;
 import mapgame.i18n.I18n;
 import mapgame.model.Army;
 import mapgame.model.ArmyGroup;
+import mapgame.model.ArmyType;
 import mapgame.model.Country;
 import mapgame.model.Province;
 import mapgame.sim.Game;
@@ -573,7 +574,7 @@ public final class MapPanel extends JPanel {
     private void drawArmies(Graphics2D g) {
         boxes.clear();
         double s = Math.max(0.8, Math.min(1.4, zoom));
-        int w = (int) (42 * s), h = (int) (20 * s);
+        int w = (int) (50 * s), h = (int) (20 * s);
         Font font = getFont().deriveFont(Font.BOLD, (float) (11 * s));
         Font tagFont = getFont().deriveFont(Font.BOLD, (float) (10 * s));
         g.setFont(font);
@@ -594,7 +595,7 @@ public final class MapPanel extends JPanel {
             g.setStroke(new BasicStroke(sel ? 2.5f : 1.2f));
             g.drawRect(r.x, r.y, r.width, r.height);
             g.setStroke(new BasicStroke(1f));
-            String text = formatStrength(a.strength);
+            String text = (a.type == ArmyType.INFANTRY ? "" : a.type.tag + " ") + formatStrength(a.strength);
             int lum = (((a.owner.rgb >> 16) & 0xFF) * 3 + ((a.owner.rgb >> 8) & 0xFF) * 6 + (a.owner.rgb & 0xFF)) / 10;
             g.setColor(lum > 140 ? Color.BLACK : Color.WHITE);
             g.drawString(text, r.x + (w - fm.stringWidth(text)) / 2, r.y + (h + fm.getAscent()) / 2 - 1);

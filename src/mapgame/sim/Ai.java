@@ -6,8 +6,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import mapgame.model.Army;
+import mapgame.model.ArmyType;
 import mapgame.model.Country;
 import mapgame.model.Province;
+import mapgame.model.Terrain;
 
 /** Simple computer opponent: recruits, attacks, makes peace and occasionally declares war. */
 final class Ai {
@@ -112,7 +114,14 @@ final class Ai {
             }
         }
         List<Province> pool = frontline.isEmpty() ? all : frontline;
-        if (!pool.isEmpty()) g.recruit(c, pool.get(g.rnd.nextInt(pool.size())));
+        if (pool.isEmpty()) return;
+        Province site = pool.get(g.rnd.nextInt(pool.size()));
+        double r = g.rnd.nextDouble();
+        ArmyType type = ArmyType.INFANTRY;
+        // A mix of troops: horsemen for open land, guns when at war and rich enough.
+        if (atWar && c.gold > 300 && r < 0.12) type = ArmyType.ARTILLERY;
+        else if (r < 0.30 && (site.terrain == Terrain.PLAINS || site.terrain == Terrain.DESERT)) type = ArmyType.CAVALRY;
+        if (g.recruit(c, site, type) == null && type != ArmyType.INFANTRY) g.recruit(c, site);
     }
 
     private static void maybeDeclareWar(Game g, Country c) {
