@@ -125,7 +125,7 @@ final class Ai {
 
     /** Neighbours of an over-mighty nation gang up on it; this keeps the strongest AI from snowballing. */
     private static void joinCoalition(Game g, Country c) {
-        if (g.day < 90 || g.day % 30 != 0) return;
+        if (g.aggression == 0 || g.day < 90 || g.day % 30 != 0) return;
         Country h = g.hegemon();
         if (h == null || h == c || g.atWar(c, h) || g.strength(c) < 2000 || g.rnd.nextDouble() > 0.35) return;
         for (Province p : c.provinces) {

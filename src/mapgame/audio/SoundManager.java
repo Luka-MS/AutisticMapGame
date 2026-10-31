@@ -2,6 +2,8 @@ package mapgame.audio;
 
 import java.util.EnumMap;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.prefs.Preferences;
 import javax.sound.sampled.AudioFormat;
 import javax.sound.sampled.AudioInputStream;
@@ -31,7 +33,7 @@ public final class SoundManager {
     private Clip music;
     private Mode mode;
     private boolean broken;
-    private int playing;
+    private final AtomicInteger playing = new AtomicInteger();
 
     public SoundManager() {
         Mode saved = Mode.EFFECTS;
@@ -57,22 +59,53 @@ public final class SoundManager {
 
     /** Plays an effect (if effects are on). */
     public void play(Synth.Cue cue) {
-        if (mode == Mode.OFF || broken || playing >= MAX_CLIPS) return;
+        if (mode == Mode.OFF || broken) return;
+        AtomicBoolean released = new AtomicBoolean();
+        Runnable release = () -> {
+            if (released.compareAndSet(false, true)) playing.decrementAndGet();
+        };
+        boolean reserved = false;
+        Clip clip = null;
         try {
             byte[] data = effects.get(cue);
-            Clip clip = AudioSystem.getClip();
+            clip = AudioSystem.getClip();
             clip.open(FORMAT, data, 0, data.length);
-            playing++;
-            clip.addLineListener(e -> {
+            if (!reserveClip()) {
+                clip.close();
+                return;
+            }
+            reserved = true;
+            Clip active = clip;
+            active.addLineListener(e -> {
                 if (e.getType() == LineEvent.Type.STOP) {
-                    clip.close();
-                    playing = Math.max(0, playing - 1);
+                    try {
+                        active.close();
+                    } finally {
+                        release.run();
+                    }
                 }
             });
-            clip.start();
+            active.start();
         } catch (Exception | LinkageError ex) {
+            if (reserved) release.run();
+            if (clip != null) {
+                try {
+                    clip.close();
+                } catch (RuntimeException | LinkageError ignored) {
+                    // The device may already have closed the clip.
+                }
+            }
             broken = true;
         }
+    }
+
+    private boolean reserveClip() {
+        int count;
+        do {
+            count = playing.get();
+            if (count >= MAX_CLIPS) return false;
+        } while (!playing.compareAndSet(count, count + 1));
+        return true;
     }
 
     private void applyMode() {

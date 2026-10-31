@@ -108,6 +108,7 @@ final class DiplomacyTab implements NationTab {
         game = g;
         Country me = g.player;
         other = me != null && p != null && p.owner != null && p.owner != me ? p.owner : null;
+        if (goalBox.getSelectedItem() != g.nextWarGoal) goalBox.setSelectedItem(g.nextWarGoal);
         if (other == null) {
             title.setText(I18n.tr("diplomacy.select"));
             status.setText("");
@@ -135,6 +136,5 @@ final class DiplomacyTab implements NationTab {
         pact.setEnabled(!war);
         guarantee.setEnabled(g.guarantees(me, other) || !war);
         trade.setEnabled(!war);
-        if (goalBox.getSelectedItem() != g.nextWarGoal) goalBox.setSelectedItem(g.nextWarGoal);
     }
 }
