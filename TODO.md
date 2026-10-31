@@ -50,7 +50,7 @@ Ideas and planned work for Map Game. Tick items off (`[x]`) as they are done.
 
 - [x] **Automated tests** for the simulation (pathfinding, combat, occupation, peace limits, alliances, supply, reinforcement, front planner, save/load) in `mapgame.tools.SelfTest`, run by a CI build on GitHub Actions (`.github/workflows/ci.yml`) for pushes to main/developer and for pull requests.
 - [ ] **Packaging:** a runnable `.jar` or Windows installer (`jpackage`) so the game can be played without a JDK.
-- [ ] **Performance:** cache the map image per mode, speed up AI pathfinding for 170-nation worlds.
+- [x] **Performance:** the political and terrain map images are cached per mode (rebuilt only when ownership changes). A JFR profile of the 177-nation world showed the AI's diplomacy queries (enemies and allies of every nation) as the hot spot; they are cached now, which halves the time per game day (0.73 -> 0.34 ms on the World map) with identical behaviour. A day is far below the 40 ms budget of the fastest game speed.
 
 ## Project housekeeping
 

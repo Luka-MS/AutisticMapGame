@@ -196,10 +196,41 @@ public final class Game {
         return wars.getOrDefault(key(a, b), day);
     }
 
+    /** Living nations at war with {@code c}, in country order. The lists are cached until the diplomacy changes. */
     public List<Country> enemiesOf(Country c) {
-        List<Country> out = new ArrayList<>();
-        for (Country o : world.countries) if (o.alive && atWar(c, o)) out.add(o);
-        return out;
+        rebuildDiplomacy();
+        return enemyLists.get(c.id);
+    }
+
+    // The lists of enemies and allies per nation are needed all the time by the AI; they are rebuilt only after a change.
+    private int diplomacyVersion, builtVersion = -1;
+    private List<List<Country>> enemyLists, allyLists;
+
+    /** Must be called after wars or alliances were changed directly (the game's own methods do it themselves). */
+    void diplomacyChanged() {
+        diplomacyVersion++;
+    }
+
+    private void rebuildDiplomacy() {
+        if (builtVersion == diplomacyVersion && enemyLists != null && enemyLists.size() == world.countries.size()) return;
+        enemyLists = new ArrayList<>();
+        allyLists = new ArrayList<>();
+        for (int i = 0; i < world.countries.size(); i++) {
+            enemyLists.add(new ArrayList<>());
+            allyLists.add(new ArrayList<>());
+        }
+        for (long k : wars.keySet()) link(enemyLists, k);
+        for (long k : alliances) link(allyLists, k);
+        for (List<Country> l : enemyLists) l.sort(java.util.Comparator.comparingInt(x -> x.id));
+        for (List<Country> l : allyLists) l.sort(java.util.Comparator.comparingInt(x -> x.id));
+        builtVersion = diplomacyVersion;
+    }
+
+    private void link(List<List<Country>> lists, long pairKey) {
+        Country x = world.countries.get((int) (pairKey >> 32)), y = world.countries.get((int) (pairKey & 0xFFFFFFFFL));
+        if (!x.alive || !y.alive) return;
+        lists.get(x.id).add(y);
+        lists.get(y.id).add(x);
     }
 
     public boolean declareWar(Country a, Country b) {
@@ -220,6 +251,7 @@ public final class Game {
             return true;
         }
         wars.put(key(a, b), day);
+        diplomacyChanged();
         warGoals.put(key(a, b), (isHuman(a) ? nextWarGoal : WarGoal.CONQUEST).ordinal());
         trades.remove(key(a, b));
         guarantees.remove(directed(a, b));
@@ -256,9 +288,8 @@ public final class Game {
     }
 
     public List<Country> alliesOf(Country c) {
-        List<Country> out = new ArrayList<>();
-        for (Country o : world.countries) if (o.alive && allied(c, o)) out.add(o);
-        return out;
+        rebuildDiplomacy();
+        return allyLists.get(c.id);
     }
 
     /** Own land or land of an ally: armies move and are supplied there. */
@@ -312,12 +343,14 @@ public final class Game {
 
     void makeAlliance(Country a, Country b) {
         if (!alliances.add(key(a, b))) return;
+        diplomacyChanged();
         alliancesFormed++;
         report(I18n.tr("alliance.formed", a.displayName(), b.displayName()), null, a, b);
     }
 
     public void breakAlliance(Country a, Country b) {
         if (!alliances.remove(key(a, b))) return;
+        diplomacyChanged();
         report(I18n.tr("alliance.broken", a.displayName(), b.displayName()), null, a, b);
         evictArmies();
     }
@@ -486,6 +519,7 @@ public final class Game {
             moved = transferOnPeace(a, b, ownedB) + transferOnPeace(b, a, ownedA);
         }
         wars.remove(key(a, b));
+        diplomacyChanged();
         warGoals.remove(key(a, b));
         peaceDeals++;
         relocateCapital(a);
@@ -1235,6 +1269,7 @@ public final class Game {
         wars.keySet().removeIf(k -> (k >> 32) == c.id || (k & 0xFFFFFFFFL) == c.id);
         totalWars.removeIf(k -> (k >> 32) == c.id || (k & 0xFFFFFFFFL) == c.id);
         alliances.removeIf(k -> (k >> 32) == c.id || (k & 0xFFFFFFFFL) == c.id);
+        diplomacyChanged();
         pacts.keySet().removeIf(k -> (k >> 32) == c.id || (k & 0xFFFFFFFFL) == c.id);
         guarantees.removeIf(k -> (k >> 32) == c.id || (k & 0xFFFFFFFFL) == c.id);
         trades.removeIf(k -> (k >> 32) == c.id || (k & 0xFFFFFFFFL) == c.id);

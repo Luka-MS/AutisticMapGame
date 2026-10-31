@@ -385,6 +385,7 @@ public final class SaveFile {
         }
 
         g.world.recomputeLabels();
+        g.diplomacyChanged();
         g.mapDirty = true;
         return g;
     }
