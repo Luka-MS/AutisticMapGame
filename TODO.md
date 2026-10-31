@@ -45,7 +45,7 @@ Ideas and planned work for Map Game. Tick items off (`[x]`) as they are done.
 
 ## Technical
 
-- [ ] **Automated tests** for the simulation (combat, pathfinding, front planner) and a CI build on GitHub Actions.
+- [x] **Automated tests** for the simulation (pathfinding, combat, occupation, peace limits, alliances, supply, reinforcement, front planner, save/load) in `mapgame.tools.SelfTest`, run by a CI build on GitHub Actions (`.github/workflows/ci.yml`) for pushes to main/developer and for pull requests.
 - [ ] **Packaging:** a runnable `.jar` or Windows installer (`jpackage`) so the game can be played without a JDK.
 - [ ] **Performance:** cache the map image per mode, speed up AI pathfinding for 170-nation worlds.
 

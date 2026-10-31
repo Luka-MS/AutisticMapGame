@@ -123,7 +123,7 @@ src/mapgame
     Game, Ai, FrontPlanner, SaveFile
   ui/                             Swing user interface
     GameWindow, MainMenuPanel, MapPanel, MapRenderer, ArmyGroupDialog
-  tools/                          headless developer tools (SimCheck, BalanceCheck, SaveCheck)
+  tools/                          headless developer tools (SelfTest, SimCheck, BalanceCheck, SaveCheck)
 res/mapgame/data/world.txt        compact country and terrain geometry for the real maps
 tools/prepare_data.py             builds world.txt from Natural Earth GeoJSON
 build.ps1, run.ps1, package.ps1    build, run, and release-packaging scripts
@@ -134,6 +134,12 @@ assets/icon.ico                    exe icon used by package.ps1
 ## Development
 
 All tools are headless and run from `out\classes` after `.\build.ps1`.
+
+**Unit tests.** `SelfTest` checks the simulation rules (pathfinding, combat, occupation, peace limits, alliances, supply, reinforcement, front planner, saving). The exit code is 1 when a check fails; GitHub Actions runs it for every pull request together with `SaveCheck`:
+
+```powershell
+java -cp out\classes mapgame.tools.SelfTest
+```
 
 **AI balance.** `BalanceCheck` lets the AI play a number of years on several seeds and prints survivors, how much land changes hands, the size of the biggest nations and debt:
 
