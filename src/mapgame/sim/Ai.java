@@ -18,6 +18,7 @@ final class Ai {
         if (c.gold < 0) controlDebt(g, c);
         makePeace(g, c);
         if (!c.alive) return;
+        diplomacy(g, c);
         joinCoalition(g, c);
         List<Country> foes = g.enemiesOf(c);
         if (!foes.isEmpty()) attack(g, c);
@@ -28,6 +29,26 @@ final class Ai {
     /** A nation in debt cannot pay its soldiers: it sends some of them home until the budget is balanced. */
     private static void controlDebt(Game g, Country c) {
         if (g.monthlyUpkeep(c) > g.monthlyIncome(c)) g.demobilize(c, 0.10);
+    }
+
+    /** Once a month: drop an alliance with a hegemon, and look for a new partner against a shared threat. */
+    private static void diplomacy(Game g, Country c) {
+        if (g.day % 30 != 0) return;
+        Country h = g.hegemon();
+        for (Country ally : g.alliesOf(c)) {
+            if (ally == h && g.rnd.nextDouble() < 0.5) g.breakAlliance(c, ally);
+        }
+        if (g.alliesOf(c).size() >= Game.MAX_ALLIES || g.rnd.nextDouble() > 0.2) return;
+        List<Country> partners = new ArrayList<>();
+        for (Country o : g.world.countries) {
+            if (!o.alive || o == c || o == h || o == g.player || g.allied(c, o) || g.atWar(c, o)) continue;
+            if (g.alliesOf(o).size() >= Game.MAX_ALLIES || o.provinces.size() < 3) continue;
+            if (g.sharedInterest(c, o) || g.bordersCountry(c, o) && g.alliesOf(c).size() < 2 && g.alliesOf(o).size() < 2
+                    && g.rnd.nextDouble() < 0.15) {
+                partners.add(o);
+            }
+        }
+        if (!partners.isEmpty()) g.makeAlliance(c, partners.get(g.rnd.nextInt(partners.size())));
     }
 
     /** Neighbours of an over-mighty nation gang up on it; this keeps the strongest AI from snowballing. */
@@ -101,7 +122,7 @@ final class Ai {
         Set<Country> neighbors = new LinkedHashSet<>();
         for (Province p : c.provinces) {
             for (Province q : p.neighbors) {
-                if (q.owner != null && q.owner != c && q.owner.alive) neighbors.add(q.owner);
+                if (q.owner != null && q.owner != c && q.owner.alive && !g.allied(c, q.owner)) neighbors.add(q.owner);
             }
         }
         List<Country> targets = new ArrayList<>();

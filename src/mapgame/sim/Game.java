@@ -48,7 +48,7 @@ public final class Game {
     public boolean mapDirty = true;
     public Consumer<String> logSink = s -> { };
     /** Statistics for the balance tools; not part of a save. */
-    public int warsDeclared, totalWarsDeclared, peaceDeals, eliminations, coalitionWars;
+    public int warsDeclared, totalWarsDeclared, peaceDeals, eliminations, coalitionWars, alliancesFormed;
 
     final Map<Long, Integer> wars = new HashMap<>();
     final Set<Long> totalWars = new HashSet<>();
@@ -149,7 +149,11 @@ public final class Game {
 
     /** A total war can never end in peace: only the elimination of one side stops it. */
     public boolean declareWar(Country a, Country b, boolean total) {
-        if (a == b || !a.alive || !b.alive) return false;
+        return declareWar(a, b, total, true);
+    }
+
+    private boolean declareWar(Country a, Country b, boolean total, boolean callAllies) {
+        if (a == b || !a.alive || !b.alive || allied(a, b)) return false;
         if (atWar(a, b)) {
             if (!total || isTotalWar(a, b)) return false;
             totalWars.add(key(a, b));
@@ -163,7 +167,88 @@ public final class Game {
             totalWarsDeclared++;
         }
         report(I18n.tr(total ? "war.declared.total" : "war.declared", a.displayName(), b.displayName()), null, a, b);
+        if (callAllies) callToArms(a, b);
         return true;
+    }
+
+    // ---------------------------------------------------------------- alliances
+
+    /** Most allies a nation can have at the same time. */
+    public static final int MAX_ALLIES = 3;
+    /** Chance that an AI ally of the defender / of the aggressor joins a new war. */
+    private static final double DEFENDER_ALLY_JOINS = 0.75, AGGRESSOR_ALLY_JOINS = 0.35;
+
+    final Set<Long> alliances = new HashSet<>();
+
+    public boolean allied(Country a, Country b) {
+        return a != null && b != null && a != b && alliances.contains(key(a, b));
+    }
+
+    public List<Country> alliesOf(Country c) {
+        List<Country> out = new ArrayList<>();
+        for (Country o : world.countries) if (o.alive && allied(c, o)) out.add(o);
+        return out;
+    }
+
+    /** Own land or land of an ally: armies move and are supplied there. */
+    public boolean friendly(Country c, Country other) {
+        return other == c || allied(c, other);
+    }
+
+    /** Allies of the attacked nation are called to arms; AI nations join most of the time, the player is notified. */
+    private void callToArms(Country aggressor, Country victim) {
+        for (Country ally : alliesOf(victim)) {
+            if (ally == aggressor || atWar(ally, aggressor) || allied(ally, aggressor)) continue;
+            if (ally == player) {
+                report(I18n.tr("alliance.callarms", victim.displayName(), aggressor.displayName()), null, player);
+            } else if (rnd.nextDouble() < DEFENDER_ALLY_JOINS) {
+                declareWar(ally, aggressor, false, false);
+            }
+        }
+        for (Country ally : alliesOf(aggressor)) {
+            if (ally == victim || atWar(ally, victim) || allied(ally, victim) || ally == player) continue;
+            if (rnd.nextDouble() < AGGRESSOR_ALLY_JOINS) declareWar(ally, victim, false, false);
+        }
+    }
+
+    /** Alliance proposal. Returns a message describing the outcome. */
+    public String proposeAlliance(Country from, Country to) {
+        if (allied(from, to)) return I18n.tr("alliance.already", to.displayName());
+        if (atWar(from, to)) return I18n.tr("alliance.atwar", to.displayName());
+        if (alliesOf(from).size() >= MAX_ALLIES) return I18n.tr("alliance.full.us");
+        if (alliesOf(to).size() >= MAX_ALLIES) return I18n.tr("alliance.full", to.displayName());
+        if (!wouldAcceptAlliance(from, to)) return I18n.tr("alliance.refuses", to.displayName());
+        makeAlliance(from, to);
+        return I18n.tr("alliance.accepts", to.displayName());
+    }
+
+    /** The other side agrees to join against a common enemy or a hegemon, or when the proposer is the stronger one. */
+    boolean wouldAcceptAlliance(Country from, Country to) {
+        return sharedInterest(from, to) || strength(from) > strength(to) * 1.2 && to.provinces.size() <= from.provinces.size();
+    }
+
+    /** Both fight the same enemy, or both border an over-mighty nation. */
+    boolean sharedInterest(Country a, Country b) {
+        for (Country e : enemiesOf(a)) if (atWar(b, e)) return true;
+        Country h = hegemon();
+        return h != null && h != a && h != b && bordersCountry(a, h) && bordersCountry(b, h);
+    }
+
+    boolean bordersCountry(Country a, Country b) {
+        for (Province p : a.provinces) for (Province q : p.neighbors) if (q.owner == b) return true;
+        return false;
+    }
+
+    void makeAlliance(Country a, Country b) {
+        if (!alliances.add(key(a, b))) return;
+        alliancesFormed++;
+        report(I18n.tr("alliance.formed", a.displayName(), b.displayName()), null, a, b);
+    }
+
+    public void breakAlliance(Country a, Country b) {
+        if (!alliances.remove(key(a, b))) return;
+        report(I18n.tr("alliance.broken", a.displayName(), b.displayName()), null, a, b);
+        evictArmies();
     }
 
     public boolean isTotalWar(Country a, Country b) {
@@ -258,6 +343,7 @@ public final class Game {
     public boolean allowed(Country c, Province p) {
         if (!p.isLand()) return false;
         if (p.owner == null || p.owner == c || p.controller == c) return true;
+        if (allied(c, p.owner) || allied(c, p.controller)) return true;
         return atWar(c, p.owner) || atWar(c, p.controller);
     }
 
@@ -520,7 +606,7 @@ public final class Game {
      */
     public int supplyDepth(Army a) {
         Country c = a.owner;
-        if (a.location.controller == c) return 0;
+        if (friendly(c, a.location.controller)) return 0;
         Set<Province> seen = new HashSet<>();
         List<Province> frontier = new ArrayList<>();
         frontier.add(a.location);
@@ -530,7 +616,7 @@ public final class Game {
             for (Province p : frontier) {
                 for (Province q : p.neighbors) {
                     if (!q.isLand() || !seen.add(q)) continue;
-                    if (q.controller == c) return depth;
+                    if (friendly(c, q.controller)) return depth;
                     next.add(q);
                 }
             }
@@ -718,6 +804,7 @@ public final class Game {
         for (Army a : armies) if (a.owner == c) a.dead = true;
         wars.keySet().removeIf(k -> (k >> 32) == c.id || (k & 0xFFFFFFFFL) == c.id);
         totalWars.removeIf(k -> (k >> 32) == c.id || (k & 0xFFFFFFFFL) == c.id);
+        alliances.removeIf(k -> (k >> 32) == c.id || (k & 0xFFFFFFFFL) == c.id);
         mapDirty = true;
         report(I18n.tr("country.eliminated", c.displayName()), null);
     }

@@ -28,8 +28,8 @@ import mapgame.model.Province;
 public final class SaveFile {
     public static final String EXTENSION = ".sav";
     private static final int MAGIC = 0x4D47534D;
-    /** 2: conquest day. 3: capitals. 4: army group reinforcement. Older versions can still be read. */
-    private static final int VERSION = 4;
+    /** 2: conquest day. 3: capitals. 4: army group reinforcement. 5: alliances. Older versions can still be read. */
+    private static final int VERSION = 5;
 
     private SaveFile() {
     }
@@ -95,6 +95,8 @@ public final class SaveFile {
         }
         out.writeInt(g.totalWars.size());
         for (long k : g.totalWars) out.writeLong(k);
+        out.writeInt(g.alliances.size());
+        for (long k : g.alliances) out.writeLong(k);
 
         List<Army> alive = g.armies.stream().filter(a -> !a.dead).toList();
         out.writeInt(alive.size());
@@ -181,6 +183,11 @@ public final class SaveFile {
         g.totalWars.clear();
         int totals = in.readInt();
         for (int i = 0; i < totals; i++) g.totalWars.add(in.readLong());
+        g.alliances.clear();
+        if (version >= 5) {
+            int pacts = in.readInt();
+            for (int i = 0; i < pacts; i++) g.alliances.add(in.readLong());
+        }
 
         g.armies.clear();
         Map<Integer, Army> byId = new HashMap<>();

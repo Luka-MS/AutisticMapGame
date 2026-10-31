@@ -62,8 +62,8 @@ public final class GameWindow extends JFrame {
     private final JLabel dateLabel = new JLabel();
     private final JTextArea status = textArea(5), info = textArea(8), logArea = new JTextArea();
     private final JButton startBtn = button(), recruitBtn = button(), splitBtn = button(), mergeBtn = button(),
-            groupsBtn = button(), warBtn = button(), totalWarBtn = button(), peaceBtn = button(), menuBtn = button(),
-            saveBtn = button(), loadBtn = button(), modeBtn = button();
+            groupsBtn = button(), warBtn = button(), totalWarBtn = button(), peaceBtn = button(), allianceBtn = button(),
+            menuBtn = button(), saveBtn = button(), loadBtn = button(), modeBtn = button();
     private final List<JToggleButton> speedBtns = new ArrayList<>();
     private JSplitPane sideSplit;
     private final ArmyGroupDialog groupDialog;
@@ -157,6 +157,13 @@ public final class GameWindow extends JFrame {
         peaceBtn.addActionListener(e -> {
             Province p = map.selectedProvince();
             if (p != null && p.owner != null) game.log(game.proposePeace(game.player, p.owner));
+            refresh();
+        });
+        allianceBtn.addActionListener(e -> {
+            Province p = map.selectedProvince();
+            if (p == null || p.owner == null) return;
+            if (game.allied(game.player, p.owner)) game.breakAlliance(game.player, p.owner);
+            else game.log(game.proposeAlliance(game.player, p.owner));
             refresh();
         });
 
@@ -384,7 +391,7 @@ public final class GameWindow extends JFrame {
 
         JPanel buttons = new JPanel();
         buttons.setLayout(new BoxLayout(buttons, BoxLayout.Y_AXIS));
-        for (JButton b : new JButton[] {startBtn, recruitBtn, splitBtn, mergeBtn, groupsBtn, warBtn, totalWarBtn, peaceBtn}) buttons.add(left(b));
+        for (JButton b : new JButton[] {startBtn, recruitBtn, splitBtn, mergeBtn, groupsBtn, warBtn, totalWarBtn, peaceBtn, allianceBtn}) buttons.add(left(b));
 
         JPanel top = new WidthTrackingPanel(new BorderLayout(0, 6));
         top.setBorder(BorderFactory.createEmptyBorder(8, 8, 4, 8));
@@ -614,10 +621,14 @@ public final class GameWindow extends JFrame {
         boolean mine = playerArmy(sa);
         splitBtn.setEnabled(mine && game.canSplit(sa));
         mergeBtn.setEnabled(mine && game.mergeCandidates(sa) > 0);
-        warBtn.setEnabled(foreign && !game.atWar(me, sel.owner));
         boolean atWarWithSel = foreign && game.atWar(me, sel.owner);
+        boolean alliedWithSel = foreign && game.allied(me, sel.owner);
+        warBtn.setEnabled(foreign && !atWarWithSel && !alliedWithSel);
         boolean totalWithSel = atWarWithSel && game.isTotalWar(me, sel.owner);
-        totalWarBtn.setEnabled(foreign && !totalWithSel);
+        totalWarBtn.setEnabled(foreign && !totalWithSel && !alliedWithSel);
+        allianceBtn.setEnabled(foreign && !atWarWithSel);
+        allianceBtn.setText(!foreign ? I18n.tr("btn.alliance")
+                : I18n.tr(alliedWithSel ? "btn.alliance.break" : "btn.alliance.propose", sel.owner.displayName()));
         totalWarBtn.setText(!foreign ? I18n.tr("btn.total")
                 : I18n.tr(atWarWithSel ? "btn.total.escalate" : "btn.total.on", sel.owner.displayName()));
         peaceBtn.setEnabled(atWarWithSel && !totalWithSel);
@@ -645,9 +656,17 @@ public final class GameWindow extends JFrame {
             if (started && c != game.player) {
                 if (game.atWar(game.player, c)) {
                     sb.append(I18n.tr(game.isTotalWar(game.player, c) ? "info.war.total" : "info.war", game.warScore(game.player, c)));
+                } else if (game.allied(game.player, c)) {
+                    sb.append(I18n.tr("info.allied"));
                 } else {
                     sb.append(I18n.tr("info.peace"));
                 }
+            }
+            List<Country> allies = game.alliesOf(c);
+            if (!allies.isEmpty()) {
+                StringBuilder names = new StringBuilder();
+                for (Country al : allies) names.append(names.length() > 0 ? ", " : "").append(al.displayName());
+                sb.append('\n').append(I18n.tr("info.allies", names));
             }
         }
         Army a = map.selectedArmy();
