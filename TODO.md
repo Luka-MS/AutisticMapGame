@@ -21,7 +21,7 @@ Ideas and planned work for Map Game. Tick items off (`[x]`) as they are done.
 
 - [ ] **Navy and sea transport (biggest gap):** ships, ports, sea zones, naval invasion and blockades. Replaces the temporary strait crossings.
 - [ ] **Alliances and diplomacy:** alliances, guarantees, non-aggression pacts, call-to-arms, trade, war goals instead of "conquer everything".
-- [ ] **Supply and attrition:** supply range, terrain and winter attrition so armies cannot march anywhere forever.
+- [x] **Supply and attrition:** armies away from own land lose men: nothing at home or right behind the border, more with distance from own territory, in deserts/snow/mountains, in big stacks (over 4,000 men) and in winter (cold half-year at latitudes above 35 degrees). Armies below 100 men starve away. The selected army shows its supply state.
 - [ ] **Army quality:** unit types (infantry, cavalry, artillery), experience, generals and morale instead of a single strength number.
 - [x] **Reinforcement for army groups:** tick *Reinforce automatically* in the group window and set a target strength; the group refills armies standing in own territory (500 men per round) and raises new armies at home when needed, paying gold and manpower like a normal recruit (50 gold are always kept in reserve).
 - [ ] **Fog of war:** only see armies near your territory; adds scouting.

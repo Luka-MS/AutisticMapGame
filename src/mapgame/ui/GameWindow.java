@@ -661,6 +661,8 @@ public final class GameWindow extends JFrame {
                 sb.append("\n\n").append(I18n.tr("info.armies", all.size(), men));
             } else {
                 sb.append("\n\n").append(I18n.tr("info.army", a.owner.displayName(), a.strength, state));
+                double loss = game.attritionRate(a) * 6 * 100;
+                sb.append('\n').append(loss <= 0 ? I18n.tr("info.supply.ok") : I18n.tr("info.supply.bad", loss));
             }
             if (a.group != null) sb.append('\n').append(I18n.tr("info.group", a.group.displayName()));
         }

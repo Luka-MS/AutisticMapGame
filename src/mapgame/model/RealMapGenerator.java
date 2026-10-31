@@ -75,6 +75,7 @@ public final class RealMapGenerator {
         linkStraits(world, cls, comp, ids, spec.strait);
         for (Province p : provinces) {
             for (Province q : p.neighbors) if (p.isLand() && !q.isLand()) p.coastal = true;
+            p.latitude = pr.lat(p.y);
         }
         return world;
     }

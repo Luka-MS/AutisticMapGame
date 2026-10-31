@@ -507,6 +507,71 @@ public final class Game {
         return null;
     }
 
+    // ---------------------------------------------------------------- supply and attrition
+
+    /** Farthest distance (in provinces) from own land that still counts in the supply calculation. */
+    public static final int MAX_SUPPLY_DEPTH = 4;
+    /** Armies larger than this lose extra men in the field. */
+    public static final int STACK_FREE = 4000;
+
+    /**
+     * How many provinces an army is away from land its own nation controls: 0 = standing on it, 1 = next to it (fully
+     * supplied), up to {@link #MAX_SUPPLY_DEPTH} + 1 when cut off.
+     */
+    public int supplyDepth(Army a) {
+        Country c = a.owner;
+        if (a.location.controller == c) return 0;
+        Set<Province> seen = new HashSet<>();
+        List<Province> frontier = new ArrayList<>();
+        frontier.add(a.location);
+        seen.add(a.location);
+        for (int depth = 1; depth <= MAX_SUPPLY_DEPTH; depth++) {
+            List<Province> next = new ArrayList<>();
+            for (Province p : frontier) {
+                for (Province q : p.neighbors) {
+                    if (!q.isLand() || !seen.add(q)) continue;
+                    if (q.controller == c) return depth;
+                    next.add(q);
+                }
+            }
+            frontier = next;
+        }
+        return MAX_SUPPLY_DEPTH + 1;
+    }
+
+    /** True in the cold half of the year at high latitudes. */
+    public boolean isWinterAt(Province p) {
+        int month = (day % 360) / 30;
+        double lat = p.lat();
+        return lat > 35 && (month == 11 || month <= 1) || lat < -35 && month >= 5 && month <= 7;
+    }
+
+    /**
+     * Share of its men an army loses per 5 days: none at home or right behind its own border, then growing with the
+     * distance from own land, the terrain, the size of the stack and winter.
+     */
+    public double attritionRate(Army a) {
+        int depth = supplyDepth(a);
+        if (depth <= 1) return 0;
+        double distance = depth == 2 ? 1.0 : depth == 3 ? 1.5 : 2.5;
+        double stack = 1 + Math.max(0, a.strength - STACK_FREE) / 8000.0;
+        double winter = isWinterAt(a.location) ? 1.6 : 1.0;
+        return a.location.terrain.attrition * distance * stack * winter;
+    }
+
+    private void applyAttrition() {
+        for (Army a : armies) {
+            if (a.dead) continue;
+            int loss = (int) Math.round(a.strength * attritionRate(a));
+            if (loss <= 0) continue;
+            a.strength -= loss;
+            if (a.strength < 100) {
+                a.dead = true;
+                if (a.owner == player) report(I18n.tr("army.starved", a.location.name), a.location, a.owner);
+            }
+        }
+    }
+
     // ---------------------------------------------------------------- simulation
 
     public void tickDay() {
@@ -515,6 +580,7 @@ public final class Game {
         resolveCombat();
         mergeArmies();
         resolveOccupation();
+        if (day % 5 == 0) applyAttrition();
         if (day % 3 == 0) {
             for (ArmyGroup grp : new ArrayList<>(groups)) {
                 if (grp.reinforce) reinforce(grp);

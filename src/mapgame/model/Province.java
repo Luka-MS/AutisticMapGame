@@ -22,6 +22,13 @@ public final class Province {
     public int landmass;
     public int minX, minY, maxX, maxY, pixels;
     public boolean coastal;
+    /** Real latitude on real maps; NaN on generated maps (see {@link #lat()}). */
+    public double latitude = Double.NaN;
+
+    /** Latitude in degrees (north positive); generated maps use a simple linear guess from the y position. */
+    public double lat() {
+        return Double.isNaN(latitude) ? (World.H / 2.0 - y) / (World.H / 2.0) * 70 : latitude;
+    }
 
     public Province(int id) {
         this.id = id;
