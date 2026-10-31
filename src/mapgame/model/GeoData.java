@@ -26,6 +26,8 @@ final class GeoData {
     final List<GeoCountry> countries = new ArrayList<>();
     final List<GeoRegion> regions = new ArrayList<>();
     final List<GeoCity> cities = new ArrayList<>();
+    /** River polylines as flat arrays of lon, lat pairs. */
+    final List<double[]> rivers = new ArrayList<>();
 
     private static GeoData cached;
 
@@ -51,6 +53,12 @@ final class GeoData {
                     case "C" -> {
                         rings = new ArrayList<>();
                         data.countries.add(new GeoCountry(f[1], Long.parseLong(f[2]), f.length > 3 ? f[3] : "", rings));
+                    }
+                    case "V" -> {
+                        String[] t = f[1].split(" ");
+                        double[] river = new double[t.length];
+                        for (int i = 0; i < t.length; i++) river[i] = Double.parseDouble(t[i]);
+                        data.rivers.add(river);
                     }
                     case "P" -> data.cities.add(new GeoCity(f[1], Double.parseDouble(f[2]), Double.parseDouble(f[3]),
                             Long.parseLong(f[4]), f[5].equals("1"), f.length > 6 ? f[6] : "", f.length > 7 ? f[7] : ""));

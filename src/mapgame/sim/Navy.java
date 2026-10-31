@@ -226,6 +226,7 @@ public final class Navy {
             for (int i = 0; i < list.size(); i++) {
                 if (dmg[i] <= 0) continue;
                 Fleet f = list.get(i);
+                g.noteBattle(f.location);
                 f.strength -= Math.max(1, (int) dmg[i]);
                 if (f.strength < 100) sink(g, f);
             }

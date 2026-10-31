@@ -63,6 +63,14 @@ public final class Game {
     /** Chosen at the start: scales incomes (see {@link Difficulty}) and the AI's eagerness to start wars (0 - 100, 50 = normal). */
     public Difficulty difficulty = Difficulty.NORMAL;
     public int aggression = 50;
+    /** Provinces where fighting happened recently (value = day of the last fighting); used for the battle markers, not saved. */
+    public final Map<Province, Integer> recentBattles = new HashMap<>();
+
+    /** Records fighting in a province and forgets old battles. */
+    void noteBattle(Province p) {
+        recentBattles.put(p, day);
+    }
+
     /** Statistics for the balance tools; not part of a save. */
     public int warsDeclared, totalWarsDeclared, peaceDeals, eliminations, coalitionWars, alliancesFormed, landings;
 
@@ -1116,6 +1124,7 @@ public final class Game {
         }
         if (day % 30 == 0) monthly();
         armies.removeIf(a -> a.dead);
+        if (day % 10 == 0) recentBattles.values().removeIf(d -> day - d > 5);
     }
 
     private void moveArmies() {
@@ -1169,6 +1178,7 @@ public final class Game {
                 if (dmg[i] <= 0) continue;
                 Army a = list.get(i);
                 int before = a.strength;
+                noteBattle(prov);
                 a.strength -= Math.max(1, (int) dmg[i]);
                 a.experience = Math.min(Army.MAX_EXPERIENCE, a.experience + EXPERIENCE_PER_BATTLE_DAY);
                 // Morale suffers with the share of the army lost; a good general keeps the men together.

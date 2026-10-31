@@ -24,6 +24,16 @@ Pick a nation, raise armies, declare wars and conquer the map - on a randomly ge
 - **Sea crossings:** islands are linked to the mainland over narrow straits (e.g. UK-France, Japan-Korea) as a cheap shortcut; for everything else there is the navy (see below).
 - **Navy:** build a fleet in one of your coastal provinces and sail it with right-click. Fleets fight enemy fleets at sea, blockade enemy coasts (a blockaded province loses half of its income while no defending fleet is there) and carry armies: a fleet carries 4 men per point of strength, so a fresh fleet (strength 500) transports one standard army of 2,000 men. See *Navy and sea transport* below.
 
+## Screenshots
+
+| Political map (Europe 1914 scenario, battle marker in the middle) | Terrain map with rivers |
+|---|---|
+| ![Political map](docs/screenshots/europe-political.png) | ![Terrain map](docs/screenshots/europe-terrain.png) |
+
+![The whole world](docs/screenshots/world.png)
+
+(Rendered by `java -cp out\classes mapgame.tools.Screenshots docs\screenshots`.)
+
 ## Getting started
 
 Requirements: a JDK 17 or newer (developed on JDK 25) and PowerShell on Windows.
@@ -187,13 +197,19 @@ On the real maps, terrain follows real geography, population follows the real po
 src/mapgame
   Main.java                       entry point
   model/                          world data and map generation
-    MapGenerator, RealMapGenerator, GeoData, MapKind, World, Province, Country, Army, ArmyGroup, Terrain
+    MapGenerator, RealMapGenerator, GeoData, MapKind, World, Province, Country, Army, ArmyType, ArmyGroup, Fleet,
+    Building, TechField, Policy, Terrain
   sim/                            game rules
-    Game, Ai, FrontPlanner, SaveFile
+    Game, Ai, FrontPlanner, Navy, GameEvents, Scenario, MapEditor, Difficulty, SaveFile
+  audio/                          generated sound effects and music (Synth, SoundManager)
+  i18n/                           texts and country names in four languages
   ui/                             Swing user interface
-    GameWindow, MainMenuPanel, MapPanel, MapRenderer, ArmyGroupDialog
-  tools/                          headless developer tools (SelfTest, SimCheck, BalanceCheck, SaveCheck)
-res/mapgame/data/world.txt        compact country and terrain geometry for the real maps
+    GameWindow, MainMenuPanel, MapPanel, MapRenderer, ArmyGroupDialog, NationDialog (+ tabs), NationPickerDialog, EditorPanel
+  tools/                          headless developer tools (SelfTest, SimCheck, BalanceCheck, SaveCheck, Screenshots)
+res/mapgame/data/world.txt        compact country, terrain, river and city data for the real maps
+res/mapgame/data/scenarios/       bundled scenarios (1914, 1936)
+mods-example/                     template for a mods folder
+docs/screenshots/                 README screenshots
 tools/prepare_data.py             builds world.txt from Natural Earth GeoJSON
 build.ps1, run.ps1, package.ps1    build, run, and release-packaging scripts
 assets/icon.ico                    exe icon used by package.ps1

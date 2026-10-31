@@ -7,6 +7,7 @@ Output format (tab separated, coordinates are lon lat pairs rounded to 2 decimal
   T <M|D|U>                  terrain region (mountains, desert, tundra), followed by R lines
   R x y x y ...              one polygon ring (holes are plain rings; fill rule is even-odd)
   P <name> <lon> <lat> <population> <capital 0|1> <adm0 code> <adm0 name>   city or capital
+  V x y x y ...              one river polyline (lon lat pairs), drawn on the map
 """
 import json
 import math
@@ -15,7 +16,8 @@ import sys
 import urllib.request
 
 BASE = "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/"
-FILES = ["ne_50m_admin_0_countries.geojson", "ne_50m_geography_regions_polys.geojson", "ne_50m_populated_places_simple.geojson"]
+FILES = ["ne_50m_admin_0_countries.geojson", "ne_50m_geography_regions_polys.geojson", "ne_50m_populated_places_simple.geojson",
+         "ne_50m_rivers_lake_centerlines.geojson"]
 EPS = 0.03
 MIN_RING_EXTENT = 0.12
 MIN_CITY_POP = 1_000_000
@@ -104,6 +106,15 @@ def main():
             continue
         lines.append("P\t%s\t%.3f\t%.3f\t%d\t%d\t%s\t%s" % (p["name"], p["longitude"], p["latitude"], pop, capital,
                                                            p.get("adm0_a3") or "", p.get("adm0name") or ""))
+    for f in data[FILES[3]]["features"]:
+        geom = f["geometry"]
+        if geom is None or f["properties"].get("featurecla") != "River":
+            continue
+        lines_ = geom["coordinates"] if geom["type"] == "MultiLineString" else [geom["coordinates"]]
+        for line in lines_:
+            pts = simplify([(p[0], p[1]) for p in line], EPS)
+            if len(pts) >= 2:
+                lines.append("V\t" + " ".join("%.2f %.2f" % p for p in pts))
     out = os.path.join("res", "mapgame", "data", "world.txt")
     os.makedirs(os.path.dirname(out), exist_ok=True)
     with open(out, "w", encoding="utf-8", newline="\n") as fh:

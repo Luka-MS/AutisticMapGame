@@ -40,7 +40,7 @@ Ideas and planned work for Map Game. Tick items off (`[x]`) as they are done.
 - [x] **Scenarios and start dates:** *Great Powers 1914* and *Europe 1936* start in their year with the big empires (Austria-Hungary, Russian and Ottoman Empire, Soviet Union, Yugoslavia, ...) and the historical alliances. Since the map data is modern, empires are approximated by merging today's nations; true historical borders would need new map data. Scenarios are plain text files and can be added by mods (see below).
 - [x] **Difficulty settings** (easy / normal / hard: AI and player income), an **AI aggressiveness** slider (0-100) in the main menu, and a **nation picker** table (provinces, population, income, manpower, army; sortable, double-click to choose) next to the Start button.
 - [x] **Sound and music:** all sounds are generated in code (no files): war, peace, good-news and bad-news cues for events that involve you, and a slow ambient music loop. The *Sound* button / **O** cycles off - effects - effects + music; the choice is remembered.
-- [ ] **Nicer map rendering** (terrain textures, rivers, smooth borders) and animated battles.
+- [x] **Map rendering:** terrain textures (forest dots, mountain ridges, desert dunes, ...), Natural Earth rivers on the real maps, and pulsing battle markers (red ring and crossed swords) where armies or fleets fought in the last days. Smooth (anti-aliased) province borders are still open.
 - [x] **Hotseat multiplayer:** 2-4 humans on one computer (*Players* spinner in the main menu). Everyone picks a nation, then the game plays in turns of 30 days: each player plans in turn (a blank hand-over screen hides the previous player's map), then the world runs for 30 days. Saves remember all players.
 - [ ] **Online multiplayer:** needs a network layer and a synchronised (deterministic) simulation; not implemented.
 - [x] **Mod support:** a `mods/` folder next to the game can hold scenarios (`mods/scenarios/*.txt`: new nations, merged nations, owners, alliances), texts (`mods/lang/<language>.properties`, `mods/lang/countries.tsv`) and a replacement map (`mods/data/world.txt`). `mods-example/` is a ready-to-copy template.
@@ -55,4 +55,4 @@ Ideas and planned work for Map Game. Tick items off (`[x]`) as they are done.
 ## Project housekeeping
 
 - [ ] Choose a license for the game code (README currently says none).
-- [ ] Add screenshots to the README.
+- [x] Add screenshots to the README (`mapgame.tools.Screenshots` renders them without a window).

@@ -16,6 +16,8 @@ public final class World {
     public final List<Country> countries = new ArrayList<>();
     /** Strait crossings between provinces of different landmasses. */
     public final List<Province[]> ferries = new ArrayList<>();
+    /** River polylines in world pixels (flat x, y arrays); only drawn, they have no gameplay effect. */
+    public final List<double[]> rivers = new ArrayList<>();
 
     public World(long seed, int[] ids, List<Province> provinces) {
         this.seed = seed;

@@ -77,7 +77,21 @@ public final class RealMapGenerator {
             for (Province q : p.neighbors) if (p.isLand() && !q.isLand()) p.coastal = true;
             p.latitude = pr.lat(p.y);
         }
+        projectRivers(world, geo, pr);
         return world;
+    }
+
+    private static void projectRivers(World world, GeoData geo, Projection pr) {
+        for (double[] line : geo.rivers) {
+            double[] px = new double[line.length];
+            boolean inside = false;
+            for (int k = 0; k < line.length / 2; k++) {
+                px[2 * k] = pr.x(line[2 * k]);
+                px[2 * k + 1] = pr.y(line[2 * k + 1]);
+                inside |= px[2 * k] > -50 && px[2 * k] < W + 50 && px[2 * k + 1] > -50 && px[2 * k + 1] < H + 50;
+            }
+            if (inside) world.rivers.add(px);
+        }
     }
 
     // ---------------------------------------------------------------- projection

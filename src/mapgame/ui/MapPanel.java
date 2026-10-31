@@ -472,6 +472,7 @@ public final class MapPanel extends JPanel {
         drawArmyPath(g);
         drawArmies(g);
         drawFleets(g);
+        drawBattles(g);
         drawMinimap(g);
         if (boxing) {
             int x = Math.min(pressX, lastX), y = Math.min(pressY, lastY);
@@ -592,6 +593,30 @@ public final class MapPanel extends JPanel {
         setArmySelection(null);
         selectionListener.run();
         centerOn(p);
+    }
+
+    /** Pulsing red rings with crossed swords where armies or fleets fought in the last days. */
+    private void drawBattles(Graphics2D g) {
+        if (game.recentBattles.isEmpty()) return;
+        double phase = (System.currentTimeMillis() % 1200) / 1200.0;
+        double s = Math.max(0.8, Math.min(1.5, zoom));
+        for (Map.Entry<Province, Integer> e : game.recentBattles.entrySet()) {
+            Province p = e.getKey();
+            int age = game.day - e.getValue();
+            if (age > 2 || (visible != null && !visible[p.id])) continue;
+            int x = (int) (p.x * zoom + offX), y = (int) (p.y * zoom + offY);
+            if (x < -40 || y < -40 || x > getWidth() + 40 || y > getHeight() + 40) continue;
+            double r = (10 + 12 * phase) * s;
+            int alpha = (int) (200 * (1 - phase));
+            g.setStroke(new BasicStroke(2.2f));
+            g.setColor(new Color(230, 40, 30, Math.max(40, alpha)));
+            g.drawOval((int) (x - r), (int) (y - r), (int) (2 * r), (int) (2 * r));
+            double k = 7 * s;
+            g.setColor(new Color(255, 255, 255, 230));
+            g.drawLine((int) (x - k), (int) (y - k), (int) (x + k), (int) (y + k));
+            g.drawLine((int) (x - k), (int) (y + k), (int) (x + k), (int) (y - k));
+            g.setStroke(new BasicStroke(1f));
+        }
     }
 
     private void drawCountryLabels(Graphics2D g) {
