@@ -112,6 +112,13 @@ public final class Game {
     public final List<Event> events = new ArrayList<>();
     public Consumer<Event> eventSink = e -> { };
 
+    /** Asks the player how to react to an event; the default always takes the first option. */
+    public interface DecisionHandler {
+        int choose(String title, String text, List<String> options);
+    }
+
+    public DecisionHandler decisions = (title, text, options) -> 0;
+
     /**
      * Logs the message and, if the player is one of {@code involved} (or nobody is named: world news),
      * also files it in the notification list.
@@ -379,7 +386,8 @@ public final class Game {
     public double monthlyIncome(Country c) {
         double inc = 0;
         for (Province p : c.provinces) if (p.controller == c) inc += p.income(day);
-        return inc * (1 + 0.08 * c.techLevel(TechField.ECONOMY)) * c.taxes.gold * c.conscription.gold;
+        double bonus = day < c.incomeBonusUntil ? 1 + c.incomeBonus : 1;
+        return inc * (1 + 0.08 * c.techLevel(TechField.ECONOMY)) * c.taxes.gold * c.conscription.gold * bonus;
     }
 
     public double monthlyUpkeep(Country c) {
@@ -1010,6 +1018,7 @@ public final class Game {
             c.gold += monthlyIncome(c) - monthlyUpkeep(c);
             c.manpower += monthlyManpower(c);
             researchTick(c);
+            GameEvents.monthly(this, c);
             if (c.gold < 0) {
                 for (Army a : armies) if (a.owner == c) a.strength = (int) (a.strength * 0.97);
             }

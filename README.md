@@ -109,6 +109,10 @@ Press **N** (or *Nation management*) to open the nation window. It collects ever
 - **Policies:** *taxes* (low: -20% gold, +10% manpower; high: +25% gold, -15% manpower) and *conscription* (light: -30% manpower; heavy: +40% manpower, -10% gold). A change is possible every 180 days.
 - **Research:** pick one of three fields - *military* (+6% damage dealt, -4% damage taken per level), *economy* (+8% gold) or *administration* (+10% manpower, -4% army upkeep, faster research). Five levels each; the cost grows with every level (12, 24, 36, 48, 60 points) and large nations earn more points per month.
 
+### Random events
+
+Every month each nation has a small chance of an event: *bumper harvest*, *plague*, *peasant revolt*, *trade treaty* (+10% gold for five years), *army reform*, *natural disaster* and *coup attempt* (when bankrupt). When it hits you, a dialog asks for your decision and the game waits; the AI decides by itself. What matters to you also shows up in the Events tab.
+
 ### Wars and total war
 
 - *Declare war* starts a normal war. Peace is accepted when the other side is not winning or when the war has dragged on for a long time. The winner takes at most 35% of the loser's provinces, and a nation can never lose its last province in a normal war.

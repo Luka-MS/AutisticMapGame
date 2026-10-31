@@ -32,8 +32,8 @@ import mapgame.model.TechField;
 public final class SaveFile {
     public static final String EXTENSION = ".sav";
     private static final int MAGIC = 0x4D47534D;
-    /** Format version; each feature added fields (2 conquest day ... 9 research, 10 policies). Older versions load too. */
-    private static final int VERSION = 10;
+    /** Format version; each feature added fields (2 conquest day ... 10 policies, 11 events). Older versions load too. */
+    private static final int VERSION = 11;
 
     private SaveFile() {
     }
@@ -89,6 +89,8 @@ public final class SaveFile {
             out.writeInt(c.taxes.ordinal());
             out.writeInt(c.conscription.ordinal());
             out.writeInt(c.policyChangedDay);
+            out.writeDouble(c.incomeBonus);
+            out.writeInt(c.incomeBonusUntil);
             out.writeInt(c.capital == null ? -1 : c.capital.id);
             out.writeInt(c.provinces.size());
             for (Province p : c.provinces) out.writeInt(p.id);
@@ -102,6 +104,7 @@ public final class SaveFile {
             out.writeInt(p.building == null ? -1 : p.building.ordinal());
             out.writeInt(p.buildDone);
             out.writeDouble(p.unrest);
+            out.writeInt(p.population);
         }
 
         out.writeInt(g.wars.size());
@@ -192,6 +195,10 @@ public final class SaveFile {
                 c.conscription = Policy.Conscription.values()[in.readInt()];
                 c.policyChangedDay = in.readInt();
             }
+            if (version >= 11) {
+                c.incomeBonus = in.readDouble();
+                c.incomeBonusUntil = in.readInt();
+            }
             if (version >= 3) {
                 int capital = in.readInt();
                 if (capital >= 0) c.capital = g.world.provinces.get(capital);
@@ -215,6 +222,9 @@ public final class SaveFile {
                 p.building = job < 0 ? null : Building.values()[job];
                 p.buildDone = in.readInt();
                 p.unrest = in.readDouble();
+            }
+            if (version >= 11) {
+                p.population = in.readInt();
             }
         }
 

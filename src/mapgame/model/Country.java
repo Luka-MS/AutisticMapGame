@@ -27,6 +27,9 @@ public final class Country {
     public Policy.Conscription conscription = Policy.Conscription.NORMAL;
     /** Day the policies were last changed. */
     public int policyChangedDay = -Policy.CHANGE_DELAY;
+    /** Temporary income bonus (for example from a trade treaty) that lasts until {@link #incomeBonusUntil}. */
+    public double incomeBonus;
+    public int incomeBonusUntil;
 
     public int techLevel(TechField f) {
         return tech[f.ordinal()];

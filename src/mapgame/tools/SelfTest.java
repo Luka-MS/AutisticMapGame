@@ -39,6 +39,8 @@ public final class SelfTest {
         run("buildings and unrest", SelfTest::buildingsAndUnrest);
         run("research", SelfTest::research);
         run("policies", SelfTest::policies);
+        run("events and decisions", SelfTest::events);
+        run("language files", SelfTest::languages);
         run("save and load", SelfTest::saveLoad);
         System.out.printf("%d checks, %d failed%n", checks, failures);
         System.exit(failures == 0 ? 0 : 1);
@@ -258,19 +260,20 @@ public final class SelfTest {
         check(home.level(mapgame.model.Building.MARKET) == 1 && home.building == null, "the building is finished after its build time");
         check(home.income(g.day) > before, "a market raises the income");
 
-        // Occupied land without a garrison rebels; a garrison keeps it quiet.
+        // Occupied land without a garrison builds up unrest and finally rebels; a garrison keeps it quiet.
         Province held = b[1];
-        held.controller = a;
-        for (int i = 0; i < 270; i++) g.tickDay();
-        check(held.controller == o, "rebels free an occupied province without a garrison");
-
         Province held2 = null;
         for (Province p : o.provinces) if (p != held && p.controller == o) held2 = p;
-        if (held2 == null) return;
-        held2.controller = a;
-        g.armies.add(new Army(900_100, a, held2, 1000));
-        for (int i = 0; i < 270; i++) g.tickDay();
-        check(held2.controller == a, "a garrison keeps an occupied province");
+        held.controller = a;
+        if (held2 != null) {
+            held2.controller = a;
+            g.armies.add(new Army(900_100, a, held2, 1000));
+        }
+        for (int i = 0; i < 80; i++) g.tickDay();
+        check(held.unrest > 20, "unrest grows in occupied land without a garrison");
+        if (held2 != null) check(held2.unrest == 0, "a garrison keeps an occupied province quiet");
+        for (int i = 0; i < 200; i++) g.tickDay();
+        check(held.controller == o, "rebels free an occupied province without a garrison");
     }
 
     private static void research() {
@@ -307,6 +310,43 @@ public final class SelfTest {
         check(!g.setPolicies(me, mapgame.model.Policy.Taxes.LOW, mapgame.model.Policy.Conscription.NORMAL), "policies cannot be changed again right away");
         for (int i = 0; i < mapgame.model.Policy.CHANGE_DELAY; i++) g.tickDay();
         check(g.setPolicies(me, mapgame.model.Policy.Taxes.LOW, mapgame.model.Policy.Conscription.HEAVY), "policies can be changed after the delay");
+    }
+
+    private static void events() {
+        Game g = newGame();
+        Country me = g.world.countries.get(0);
+        g.player = me;
+        int[] asked = {0};
+        g.decisions = (title, text, options) -> {
+            asked[0]++;
+            check(!title.isEmpty() && !text.isEmpty() && options.size() >= 2, "decision texts exist: " + title);
+            return asked[0] % 2;
+        };
+        for (int i = 0; i < 360 * 40; i++) g.tickDay();
+        check(asked[0] > 0, "the player is asked about events (" + asked[0] + " decisions in 40 years)");
+        check(g.events.stream().anyMatch(e -> e.text().contains(" - ")), "event results are reported");
+    }
+
+    private static void languages() throws IOException {
+        java.util.Properties en = props("en");
+        for (String code : new String[] {"de", "ru", "sh"}) {
+            java.util.Properties p = props(code);
+            java.util.List<String> missing = new ArrayList<>();
+            for (String k : en.stringPropertyNames()) if (!p.containsKey(k)) missing.add(k);
+            check(missing.isEmpty(), code + ".properties lacks keys: " + missing);
+            java.util.List<String> extra = new ArrayList<>();
+            for (String k : p.stringPropertyNames()) if (!en.containsKey(k)) extra.add(k);
+            check(extra.isEmpty(), code + ".properties has unknown keys: " + extra);
+        }
+    }
+
+    private static java.util.Properties props(String code) throws IOException {
+        java.util.Properties p = new java.util.Properties();
+        try (java.io.InputStream in = SelfTest.class.getResourceAsStream("/mapgame/lang/" + code + ".properties");
+                java.io.Reader r = new java.io.InputStreamReader(in, java.nio.charset.StandardCharsets.UTF_8)) {
+            p.load(r);
+        }
+        return p;
     }
 
     private static void fogOfWar() {

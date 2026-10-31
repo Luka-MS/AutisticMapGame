@@ -87,6 +87,7 @@ public final class GameWindow extends JFrame {
     private Game game;
     private boolean started;
     private boolean inMenu = true;
+    private boolean modalOpen;
     private boolean dividerPlaced;
     private int speed;
     private int lastAutosaveYear;
@@ -242,6 +243,7 @@ public final class GameWindow extends JFrame {
         };
         eventModel.clear();
         unreadEvents = 0;
+        game.decisions = this::askDecision;
         game.eventSink = ev -> {
             eventModel.add(0, ev);
             if (eventModel.size() > Game.MAX_EVENTS) eventModel.removeElementAt(eventModel.size() - 1);
@@ -592,11 +594,27 @@ public final class GameWindow extends JFrame {
         updateModeText();
     }
 
+    /** Shows a decision event; the game stands still while the question is open. */
+    private int askDecision(String title, String text, List<String> options) {
+        int oldSpeed = speed;
+        setSpeed(0);
+        modalOpen = true;
+        try {
+            int choice = JOptionPane.showOptionDialog(this, "<html><body style='width:320px'>" + text + "</body></html>", title,
+                    JOptionPane.DEFAULT_OPTION, JOptionPane.QUESTION_MESSAGE, null, options.toArray(), options.get(0));
+            return Math.max(0, choice);
+        } finally {
+            modalOpen = false;
+            lastNanos = System.nanoTime();
+            setSpeed(oldSpeed);
+        }
+    }
+
     private void frame() {
         long now = System.nanoTime();
         double dt = (now - lastNanos) / 1e6;
         lastNanos = now;
-        if (inMenu) return;
+        if (inMenu || modalOpen) return;
         if (started && speed > 0) {
             acc += dt;
             int steps = 0;
