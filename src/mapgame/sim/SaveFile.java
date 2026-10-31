@@ -28,8 +28,8 @@ import mapgame.model.Province;
 public final class SaveFile {
     public static final String EXTENSION = ".sav";
     private static final int MAGIC = 0x4D47534D;
-    /** 2: provinces remember when they were conquered. 3: capitals are saved. Older versions can still be read. */
-    private static final int VERSION = 3;
+    /** 2: conquest day. 3: capitals. 4: army group reinforcement. Older versions can still be read. */
+    private static final int VERSION = 4;
 
     private SaveFile() {
     }
@@ -117,6 +117,8 @@ public final class SaveFile {
             out.writeInt(grp.target == null ? -1 : grp.target.id);
             out.writeInt(grp.stance.ordinal());
             out.writeUTF(grp.status);
+            out.writeBoolean(grp.reinforce);
+            out.writeInt(grp.goal);
             List<Army> members = grp.armies.stream().filter(a -> !a.dead).toList();
             out.writeInt(members.size());
             for (Army a : members) {
@@ -208,6 +210,10 @@ public final class SaveFile {
             grp.target = target < 0 ? null : g.world.countries.get(target);
             grp.stance = ArmyGroup.Stance.values()[in.readInt()];
             grp.status = in.readUTF();
+            if (version >= 4) {
+                grp.reinforce = in.readBoolean();
+                grp.goal = in.readInt();
+            }
             int members = in.readInt();
             for (int k = 0; k < members; k++) {
                 Army a = byId.get(in.readInt());

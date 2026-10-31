@@ -385,6 +385,70 @@ public final class Game {
         a.group = null;
     }
 
+    /** Gold a single refilled soldier costs: the same price as in a fresh recruit. */
+    public static final double GOLD_PER_MAN = (double) RECRUIT_GOLD / RECRUIT_MEN;
+    /** Most men a group tops up in one army per planning round. */
+    public static final int REFILL_STEP = 500;
+    /** Gold that automatic reinforcement leaves untouched so upkeep can still be paid. */
+    public static final int RESERVE_GOLD = 50;
+
+    /**
+     * Brings a group with {@link ArmyGroup#reinforce} back towards its {@link ArmyGroup#goal}: armies standing in
+     * own territory are refilled from the manpower pool, and when that is not enough a new army is raised at home.
+     */
+    void reinforce(ArmyGroup grp) {
+        Country c = grp.owner;
+        if (!c.alive) return;
+        int deficit = grp.goal - grp.strength();
+        for (Army a : grp.armies) {
+            if (deficit <= 0) break;
+            if (a.dead || a.location.controller != c || a.location.owner != c || isEngaged(a)) continue;
+            int affordable = (int) (Math.max(0, c.gold - RESERVE_GOLD) / GOLD_PER_MAN);
+            int add = Math.min(Math.min(REFILL_STEP, deficit), Math.min(c.manpower, affordable));
+            if (add <= 0) return;
+            a.strength += add;
+            c.manpower -= add;
+            c.gold -= add * GOLD_PER_MAN;
+            deficit -= add;
+        }
+        if (deficit < RECRUIT_MEN || c.gold < RECRUIT_GOLD + RESERVE_GOLD || c.manpower < RECRUIT_MEN) return;
+        Province site = reinforcementSite(grp);
+        if (site == null) return;
+        Army n = recruit(c, site);
+        if (n != null) assignToGroup(grp, n);
+    }
+
+    /** The own, unoccupied province closest to the group's front (or its armies) where new troops are raised. */
+    private Province reinforcementSite(ArmyGroup grp) {
+        double fx = 0, fy = 0;
+        int n = 0;
+        List<Province> anchors = grp.front.isEmpty() ? List.of() : grp.front;
+        for (Province p : anchors) {
+            fx += p.x;
+            fy += p.y;
+            n++;
+        }
+        if (n == 0) {
+            for (Army a : grp.armies) {
+                if (a.dead) continue;
+                fx += a.location.x;
+                fy += a.location.y;
+                n++;
+            }
+        }
+        Province best = null;
+        double bd = Double.MAX_VALUE;
+        for (Province p : grp.owner.provinces) {
+            if (p.controller != grp.owner || !p.isLand()) continue;
+            double d = n == 0 ? 0 : (p.x - fx / n) * (p.x - fx / n) + (p.y - fy / n) * (p.y - fy / n);
+            if (d < bd) {
+                bd = d;
+                best = p;
+            }
+        }
+        return best;
+    }
+
     /** Re-plans a group right away instead of waiting for the next planning tick. */
     public void planGroup(ArmyGroup g) {
         FrontPlanner.update(this, g);
@@ -452,7 +516,10 @@ public final class Game {
         mergeArmies();
         resolveOccupation();
         if (day % 3 == 0) {
-            for (ArmyGroup grp : new ArrayList<>(groups)) FrontPlanner.update(this, grp);
+            for (ArmyGroup grp : new ArrayList<>(groups)) {
+                if (grp.reinforce) reinforce(grp);
+                FrontPlanner.update(this, grp);
+            }
         }
         if (day % 5 == 0) {
             for (Country c : new ArrayList<>(world.countries)) {

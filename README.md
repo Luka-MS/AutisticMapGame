@@ -93,6 +93,8 @@ Open the window with **G**:
 
 Army counters of a group carry a `G<number>` tag. The selected group shows its front provinces as circles and the assignment of each army as dashed lines.
 
+**Automatic reinforcement:** tick *Reinforce automatically* and set a *target strength*. Whenever the group is below it, armies standing in your own territory are refilled from the manpower pool (500 men per planning round) and, if that is not enough, new armies are raised in the province closest to the front. The usual recruit prices apply (0.04 gold and 1 manpower per man) and 50 gold are always kept in reserve.
+
 ### Wars and total war
 
 - *Declare war* starts a normal war. Peace is accepted when the other side is not winning or when the war has dragged on for a long time. The winner takes at most 35% of the loser's provinces, and a nation can never lose its last province in a normal war.

@@ -23,7 +23,7 @@ Ideas and planned work for Map Game. Tick items off (`[x]`) as they are done.
 - [ ] **Alliances and diplomacy:** alliances, guarantees, non-aggression pacts, call-to-arms, trade, war goals instead of "conquer everything".
 - [ ] **Supply and attrition:** supply range, terrain and winter attrition so armies cannot march anywhere forever.
 - [ ] **Army quality:** unit types (infantry, cavalry, artillery), experience, generals and morale instead of a single strength number.
-- [ ] **Reinforcement for army groups:** groups recruit and refill armies automatically from the manpower pool.
+- [x] **Reinforcement for army groups:** tick *Reinforce automatically* in the group window and set a target strength; the group refills armies standing in own territory (500 men per round) and raises new armies at home when needed, paying gold and manpower like a normal recruit (50 gold are always kept in reserve).
 - [ ] **Fog of war:** only see armies near your territory; adds scouting.
 
 ## Economy and nation management
