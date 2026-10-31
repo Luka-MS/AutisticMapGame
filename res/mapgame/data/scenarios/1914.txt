@@ -1,0 +1,13 @@
+# Great Powers 1914 on the modern map data: the big empires are approximated by merging today's nations.
+name Great Powers 1914
+start 1914
+maps europe world
+merge Austria-Hungary = Austria, Hungary, Czechia, Slovakia, Slovenia, Croatia, Bosnia and Herz.
+merge Russian Empire = Russia, Ukraine, Belarus, Poland, Lithuania, Latvia, Estonia, Finland, Moldova, Georgia, Armenia, Azerbaijan
+merge Ottoman Empire = Turkey, Syria, Lebanon, Iraq, Jordan, Palestine, Israel
+merge United Kingdom = United Kingdom, Ireland
+rename Germany = German Empire
+alliance France, Russian Empire
+alliance France, United Kingdom
+alliance German Empire, Austria-Hungary
+alliance German Empire, Ottoman Empire

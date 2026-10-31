@@ -1,0 +1,12 @@
+# Europe on the eve of the Second World War, approximated with today's map data.
+name Europe 1936
+start 1936
+maps europe world
+merge Soviet Union = Russia, Ukraine, Belarus, Moldova, Georgia, Armenia, Azerbaijan, Kazakhstan, Uzbekistan, Turkmenistan, Kyrgyzstan, Tajikistan
+merge Yugoslavia = Serbia, Croatia, Slovenia, Bosnia and Herz., Montenegro, North Macedonia, Kosovo
+merge Czechoslovakia = Czechia, Slovakia
+alliance Germany, Italy
+alliance France, United Kingdom
+alliance France, Poland
+alliance Czechoslovakia, Yugoslavia
+alliance Yugoslavia, Romania

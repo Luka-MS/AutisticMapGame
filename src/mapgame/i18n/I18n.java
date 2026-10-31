@@ -3,7 +3,11 @@ package mapgame.i18n;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.Reader;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.io.BufferedReader;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -21,6 +25,8 @@ public final class I18n {
     private static final String PREF_KEY = "language";
     private static final Preferences PREFS = Preferences.userNodeForPackage(I18n.class);
     private static final List<Runnable> LISTENERS = new ArrayList<>();
+    /** Folder next to the game where mods can put texts ({@code <language>.properties}, {@code countries.tsv}). */
+    public static final Path MOD_LANG = Paths.get("mods", "lang");
 
     private static Properties english;
     private static Properties current;
@@ -91,18 +97,31 @@ public final class I18n {
         Map<String, String> names = new HashMap<>();
         try (InputStream in = I18n.class.getResourceAsStream(path)) {
             if (in == null) throw new IllegalStateException("Missing resource " + path);
-            BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
-            String line;
-            while ((line = reader.readLine()) != null) {
-                if (line.isBlank() || line.startsWith("#")) continue;
-                String[] f = line.split("\t");
-                if (f.length <= column || f[column].isBlank()) continue;
-                names.put(f[0], l.transliterate ? Cyrillizer.convert(f[column]) : f[column]);
-            }
+            readCountryNames(in, column, l, names);
         } catch (IOException ex) {
             throw new IllegalStateException("Cannot read " + path, ex);
         }
+        // Mods may add or override country names.
+        Path mod = MOD_LANG.resolve("countries.tsv");
+        if (Files.isRegularFile(mod)) {
+            try (InputStream in = Files.newInputStream(mod)) {
+                readCountryNames(in, column, l, names);
+            } catch (IOException ex) {
+                System.err.println("Cannot read " + mod + ": " + ex);
+            }
+        }
         return names;
+    }
+
+    private static void readCountryNames(InputStream in, int column, Language l, Map<String, String> names) throws IOException {
+        BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
+        String line;
+        while ((line = reader.readLine()) != null) {
+            if (line.isBlank() || line.startsWith("#")) continue;
+            String[] f = line.split("\t");
+            if (f.length <= column || f[column].isBlank()) continue;
+            names.put(f[0], l.transliterate ? Cyrillizer.convert(f[column]) : f[column]);
+        }
     }
 
     private static Properties read(Language l) {
@@ -113,6 +132,15 @@ public final class I18n {
             p.load(new InputStreamReader(in, StandardCharsets.UTF_8));
         } catch (IOException ex) {
             throw new IllegalStateException("Cannot read " + path, ex);
+        }
+        // Mods may add texts (for example scenario names) or replace existing ones.
+        Path mod = MOD_LANG.resolve(l.file + ".properties");
+        if (Files.isRegularFile(mod)) {
+            try (Reader r = Files.newBufferedReader(mod, StandardCharsets.UTF_8)) {
+                p.load(r);
+            } catch (IOException ex) {
+                System.err.println("Cannot read " + mod + ": " + ex);
+            }
         }
         for (String key : p.stringPropertyNames()) {
             String value = p.getProperty(key);

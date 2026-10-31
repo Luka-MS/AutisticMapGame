@@ -14,6 +14,7 @@ import javax.swing.DefaultComboBoxModel;
 import javax.swing.DefaultListCellRenderer;
 import javax.swing.DefaultListModel;
 import javax.swing.JButton;
+import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
 import javax.swing.JDialog;
 import javax.swing.JFrame;
@@ -21,8 +22,10 @@ import javax.swing.JLabel;
 import javax.swing.JList;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
+import javax.swing.JSpinner;
 import javax.swing.JTextArea;
 import javax.swing.ListSelectionModel;
+import javax.swing.SpinnerNumberModel;
 import mapgame.i18n.I18n;
 import mapgame.model.Army;
 import mapgame.model.ArmyGroup;
@@ -41,7 +44,10 @@ public final class ArmyGroupDialog extends JDialog {
     private final JTextArea statusArea = new JTextArea(6, 24);
     private final JButton newBtn = new JButton(), deleteBtn = new JButton(), addBtn = new JButton(),
             removeBtn = new JButton(), addAllBtn = new JButton();
-    private final JLabel listLabel = new JLabel(), frontLabel = new JLabel(), ordersLabel = new JLabel(), help = new JLabel();
+    private final JLabel listLabel = new JLabel(), frontLabel = new JLabel(), ordersLabel = new JLabel(), help = new JLabel(),
+            goalLabel = new JLabel();
+    private final JCheckBox reinforceBox = new JCheckBox();
+    private final JSpinner goalSpinner = new JSpinner(new SpinnerNumberModel(2000, 0, 200_000, 500));
     private boolean updating;
 
     public ArmyGroupDialog(JFrame owner, MapPanel map) {
@@ -70,6 +76,18 @@ public final class ArmyGroupDialog extends JDialog {
             g.stance = (ArmyGroup.Stance) stanceBox.getSelectedItem();
             game.planGroup(g);
             refresh();
+        });
+        reinforceBox.setFocusable(false);
+        reinforceBox.addActionListener(e -> {
+            ArmyGroup g = list.getSelectedValue();
+            if (updating || g == null) return;
+            g.reinforce = reinforceBox.isSelected();
+            if (g.reinforce && g.goal <= 0) g.goal = Math.max(1000, (g.strength() + 499) / 500 * 500);
+            refresh();
+        });
+        goalSpinner.addChangeListener(e -> {
+            ArmyGroup g = list.getSelectedValue();
+            if (!updating && g != null) g.goal = (Integer) goalSpinner.getValue();
         });
         newBtn.addActionListener(e -> {
             ArmyGroup g = game.createGroup(game.player);
@@ -136,6 +154,10 @@ public final class ArmyGroupDialog extends JDialog {
         form.add(left(ordersLabel));
         form.add(left(stanceBox));
         form.add(Box.createVerticalStrut(10));
+        form.add(left(reinforceBox));
+        form.add(left(goalLabel));
+        form.add(left(goalSpinner));
+        form.add(Box.createVerticalStrut(10));
         form.add(left(armyButtons));
         form.add(Box.createVerticalStrut(4));
         form.add(left(addAllBtn));
@@ -148,7 +170,7 @@ public final class ArmyGroupDialog extends JDialog {
         add(help, BorderLayout.SOUTH);
         I18n.addListener(this::applyLanguage);
         applyLanguage();
-        setPreferredSize(new Dimension(380, 660));
+        setPreferredSize(new Dimension(380, 740));
         pack();
         setLocationRelativeTo(owner);
     }
@@ -163,6 +185,8 @@ public final class ArmyGroupDialog extends JDialog {
         addBtn.setText(I18n.tr("group.add"));
         removeBtn.setText(I18n.tr("group.remove"));
         addAllBtn.setText(I18n.tr("group.addall"));
+        reinforceBox.setText(I18n.tr("group.reinforce"));
+        goalLabel.setText(I18n.tr("group.goal"));
         help.setText(I18n.tr("group.help"));
         refresh();
         list.repaint();
@@ -197,6 +221,8 @@ public final class ArmyGroupDialog extends JDialog {
             for (JButton b : new JButton[] {newBtn, deleteBtn, addBtn, removeBtn, addAllBtn}) b.setEnabled(false);
             targetBox.setEnabled(false);
             stanceBox.setEnabled(false);
+            reinforceBox.setEnabled(false);
+            goalSpinner.setEnabled(false);
             return;
         }
         updating = true;
@@ -215,6 +241,12 @@ public final class ArmyGroupDialog extends JDialog {
             deleteBtn.setEnabled(g != null);
             targetBox.setEnabled(g != null);
             stanceBox.setEnabled(g != null);
+            reinforceBox.setEnabled(g != null);
+            goalSpinner.setEnabled(g != null && g.reinforce);
+            if (g != null) {
+                reinforceBox.setSelected(g.reinforce);
+                if (!(goalSpinner.getValue() instanceof Integer v) || v != g.goal) goalSpinner.setValue(g.goal);
+            }
             addBtn.setEnabled(g != null && mine && a.group != g);
             removeBtn.setEnabled(mine && a.group != null);
             addAllBtn.setEnabled(g != null);

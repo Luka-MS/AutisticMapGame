@@ -22,6 +22,13 @@ public final class Province {
     public int landmass;
     public int minX, minY, maxX, maxY, pixels;
     public boolean coastal;
+    /** Real latitude on real maps; NaN on generated maps (see {@link #lat()}). */
+    public double latitude = Double.NaN;
+
+    /** Latitude in degrees (north positive); generated maps use a simple linear guess from the y position. */
+    public double lat() {
+        return Double.isNaN(latitude) ? (World.H / 2.0 - y) / (World.H / 2.0) * 70 : latitude;
+    }
 
     public Province(int id) {
         this.id = id;
@@ -30,21 +37,71 @@ public final class Province {
     public static final int FERRY_DAYS = 4;
 
     /** Days an army needs to enter this province coming from {@code from}. */
-    public int travelDays(Province from) {
-        return terrain.moveDays + (ferryTo.contains(from) ? FERRY_DAYS : 0);
+    public double travelDays(Province from) {
+        double days = terrain.moveDays * (1 - 0.15 * level(Building.ROADS));
+        return Math.max(1, days) + (ferryTo.contains(from) ? FERRY_DAYS : 0);
+    }
+
+    /** Current level of each {@link Building}. */
+    public final int[] buildings = new int[Building.values().length];
+    /** Building under construction (null if none) and the day it is finished. */
+    public Building building;
+    public int buildDone;
+    /** 0 - 100: grows while an enemy holds the province without a garrison; at 100 the people rise up. */
+    public double unrest;
+
+    public int level(Building b) {
+        return buildings[b.ordinal()];
     }
 
     public boolean isLand() {
         return terrain.land;
     }
 
-    /** Gold per month. */
+    /** Day this province last changed owner through a peace deal; far in the past for the starting borders. */
+    public int conqueredDay = NEVER;
+    public static final int NEVER = -100_000;
+    /** Days a conquered province needs to be fully integrated; it yields only half until then. */
+    public static final int INTEGRATION_DAYS = 360;
+
+    /** Share (0.5 - 1.0) of its yield a province delivers {@code day}, lower right after a conquest. */
+    public double integration(int day) {
+        return 0.5 + 0.5 * Math.min(1.0, Math.max(0, day - conqueredDay) / (double) INTEGRATION_DAYS);
+    }
+
+    /** Gold per month on the given day. */
+    public double income(int day) {
+        return income() * integration(day);
+    }
+
+    /** Real city located in this province (real maps only), or null. */
+    public String city;
+    public long cityPopulation;
+
+    public boolean isCapital() {
+        return owner != null && owner.capital == this;
+    }
+
+    /** Yield multiplier: cities and especially capitals are worth more than farmland. */
+    public double wealth() {
+        double w = 1;
+        if (city != null) w += cityPopulation >= 5_000_000 ? 0.6 : 0.3;
+        if (isCapital()) w += 0.5;
+        return w;
+    }
+
+    /** Full gold per month, ignoring integration. */
     public double income() {
-        return population / 10000.0;
+        return population / 10000.0 * wealth() * (1 + 0.2 * level(Building.MARKET));
     }
 
     /** Manpower per month. */
     public int manpowerGain() {
-        return (int) (population * 0.0006);
+        return (int) (population * 0.0006 * wealth() * (1 + 0.2 * level(Building.BARRACKS)));
+    }
+
+    /** Manpower per month on the given day. */
+    public int manpowerGain(int day) {
+        return (int) (manpowerGain() * integration(day));
     }
 }

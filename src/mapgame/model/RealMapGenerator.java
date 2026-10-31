@@ -74,11 +74,27 @@ public final class RealMapGenerator {
 
         assignTerrain(world, geo, pr, ids, cls, seed);
         createCountries(world, geo, provCls, subs, rnd);
+        placeCities(world, geo, pr);
         linkStraits(world, cls, comp, ids, spec.strait);
         for (Province p : provinces) {
             for (Province q : p.neighbors) if (p.isLand() && !q.isLand()) p.coastal = true;
+            p.latitude = pr.lat(p.y);
         }
+        projectRivers(world, geo, pr);
         return world;
+    }
+
+    private static void projectRivers(World world, GeoData geo, Projection pr) {
+        for (double[] line : geo.rivers) {
+            double[] px = new double[line.length];
+            boolean inside = false;
+            for (int k = 0; k < line.length / 2; k++) {
+                px[2 * k] = pr.x(line[2 * k]);
+                px[2 * k + 1] = pr.y(line[2 * k + 1]);
+                inside |= px[2 * k] > -50 && px[2 * k] < W + 50 && px[2 * k + 1] > -50 && px[2 * k + 1] < H + 50;
+            }
+            if (inside) world.rivers.add(px);
+        }
     }
 
     // ---------------------------------------------------------------- projection
@@ -572,6 +588,55 @@ public final class RealMapGenerator {
             String name = subs.name(e.getKey());
             for (int k = 0; k < list.size(); k++) list.get(k).name = k == 0 ? name : name + " " + (k + 1);
         }
+    }
+
+    /**
+     * Puts the real cities on the map (the province under a city is named after it and yields more) and moves each
+     * country's capital to its real capital where that lies on the map.
+     */
+    private static void placeCities(World world, GeoData geo, Projection pr) {
+        Map<String, GeoData.GeoCountry> byName = new HashMap<>();
+        for (GeoData.GeoCountry gc : geo.countries) byName.put(gc.name(), gc);
+        Map<Country, Province> capitals = new HashMap<>();
+        Map<Country, Long> capitalPop = new HashMap<>();
+
+        for (GeoData.GeoCity city : geo.cities) {
+            Province p = landProvinceAt(world, pr.x(city.lon()), pr.y(city.lat()));
+            if (p == null || p.owner == null) continue;
+            if (p.city == null || city.population() > p.cityPopulation) {
+                p.city = city.name();
+                p.cityPopulation = city.population();
+            }
+            if (!city.capital()) continue;
+            Country owner = p.owner;
+            GeoData.GeoCountry gc = byName.get(owner.name);
+            boolean mine = gc != null && ((!city.code().isEmpty() && city.code().equals(gc.code())) || city.countryName().equals(gc.name()));
+            if (mine && city.population() >= capitalPop.getOrDefault(owner, -1L)) {
+                capitals.put(owner, p);
+                capitalPop.put(owner, city.population());
+            }
+        }
+        for (Map.Entry<Country, Province> e : capitals.entrySet()) e.getKey().capital = e.getValue();
+        for (Province p : world.provinces) {
+            if (p.city != null) p.name = p.city;
+        }
+    }
+
+    /** The land province at a world position, or the closest land neighbour when the point lies just off the coast. */
+    private static Province landProvinceAt(World world, double x, double y) {
+        Province p = world.provinceAt(x, y);
+        if (p == null || p.isLand()) return p;
+        Province best = null;
+        double bd = Double.MAX_VALUE;
+        for (Province q : p.neighbors) {
+            if (!q.isLand()) continue;
+            double d = (q.x - x) * (q.x - x) + (q.y - y) * (q.y - y);
+            if (d < bd) {
+                bd = d;
+                best = q;
+            }
+        }
+        return best;
     }
 
     /** The province closest to the centre of the country's biggest landmass. */
