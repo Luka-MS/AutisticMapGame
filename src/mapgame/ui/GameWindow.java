@@ -80,6 +80,7 @@ public final class GameWindow extends JFrame {
     private final CardLayout cards = new CardLayout();
     private final JPanel root = new JPanel(cards);
     private final MainMenuPanel menu;
+    private final EditorPanel editorPanel = new EditorPanel(this::showMenu);
     private final JTabbedPane logTabs = new JTabbedPane();
     private final JComboBox<ArmyType> typeBox = new JComboBox<>(ArmyType.values());
     private final DefaultListModel<Game.Event> eventModel = new DefaultListModel<>();
@@ -124,6 +125,12 @@ public final class GameWindow extends JFrame {
             }
 
             @Override
+            public void editor() {
+                editorPanel.open();
+                cards.show(root, "editor");
+            }
+
+            @Override
             public void quit() {
                 dispose();
                 System.exit(0);
@@ -131,6 +138,7 @@ public final class GameWindow extends JFrame {
         });
         root.add(menu, "menu");
         root.add(gamePanel, "game");
+        root.add(editorPanel, "editor");
         setContentPane(root);
         installKeys();
         I18n.addListener(this::applyLanguage);
@@ -231,11 +239,13 @@ public final class GameWindow extends JFrame {
         menu.setBusy(I18n.tr("menu.generating", kind.label()));
         Difficulty difficulty = menu.difficulty();
         Scenario scenario = menu.scenario();
+        // A scenario made with the map editor for a random world fixes the world seed.
+        long worldSeed = scenario != null && scenario.seed != null && scenario.supports(kind) ? scenario.seed : seed;
         int aggression = menu.aggression();
         new SwingWorker<Game, Void>() {
             @Override
             protected Game doInBackground() {
-                Game g = Game.create(kind, seed, scenario);
+                Game g = Game.create(kind, worldSeed, scenario);
                 g.difficulty = difficulty;
                 g.aggression = aggression;
                 return g;

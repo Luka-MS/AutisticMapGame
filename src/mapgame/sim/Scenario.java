@@ -34,6 +34,9 @@ import mapgame.model.World;
  * rename Turkey = Ottoman Empire
  * newcountry Atlantis 8844AA                              (a new nation with the given RGB colour)
  * owner 123 Atlantis                                      (province 123 now belongs to Atlantis)
+ * provname 123 Port Atlantis                              (rename a province)
+ * population 123 250000                                   (set a province's population)
+ * seed 4711                                               (random map only: the world seed the province ids refer to)
  * alliance France, Russian Empire
  * war Serbia, Austria-Hungary
  * </pre>
@@ -44,6 +47,8 @@ public final class Scenario {
     public final String id;
     public String name;
     public int startYear = 1900;
+    /** Fixed world seed for the random map (written by the map editor), or null. */
+    public Long seed;
     public final Set<MapKind> kinds = EnumSet.noneOf(MapKind.class);
     private final List<String[]> directives = new ArrayList<>();
 
@@ -118,6 +123,7 @@ public final class Scenario {
             switch (cmd) {
                 case "name" -> s.name = rest;
                 case "start" -> s.startYear = Integer.parseInt(rest);
+                case "seed" -> s.seed = Long.parseLong(rest);
                 case "maps" -> {
                     for (String m : rest.split("[ ,]+")) {
                         if (!m.isEmpty()) s.kinds.add(MapKind.valueOf(m.toUpperCase()));
@@ -199,6 +205,18 @@ public final class Scenario {
                     int id = Integer.parseInt(d[1].substring(0, sp));
                     Country c = find(w, d[1].substring(sp + 1));
                     if (c != null && id >= 0 && id < w.provinces.size() && w.provinces.get(id).isLand()) w.setOwner(w.provinces.get(id), c);
+                }
+                case "provname" -> {
+                    int sp = d[1].indexOf(' ');
+                    if (sp < 0) break;
+                    int id = Integer.parseInt(d[1].substring(0, sp));
+                    if (id >= 0 && id < w.provinces.size()) w.provinces.get(id).name = d[1].substring(sp + 1).strip();
+                }
+                case "population" -> {
+                    int sp = d[1].indexOf(' ');
+                    if (sp < 0) break;
+                    int id = Integer.parseInt(d[1].substring(0, sp));
+                    if (id >= 0 && id < w.provinces.size()) w.provinces.get(id).population = Math.max(0, Integer.parseInt(d[1].substring(sp + 1).strip()));
                 }
                 default -> { }
             }

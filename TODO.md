@@ -42,7 +42,7 @@ Ideas and planned work for Map Game. Tick items off (`[x]`) as they are done.
 - [ ] **Sound and music**, nicer map rendering (terrain textures, rivers, smooth borders), animated battles.
 - [ ] **Multiplayer:** hotseat first, online later.
 - [x] **Mod support:** a `mods/` folder next to the game can hold scenarios (`mods/scenarios/*.txt`: new nations, merged nations, owners, alliances), texts (`mods/lang/<language>.properties`, `mods/lang/countries.tsv`) and a replacement map (`mods/data/world.txt`). `mods-example/` is a ready-to-copy template.
-- [ ] **Map editor** for custom countries and provinces.
+- [x] **Map editor** (main menu): pick a map, create and rename nations (colour dialog), click provinces to give them to the selected nation, rename provinces and set their population, then save the result as a scenario in `mods/scenarios/`. Only differences to the generated world are saved, so scenarios stay small and work for random worlds too (the seed is stored).
 
 ## Technical
 

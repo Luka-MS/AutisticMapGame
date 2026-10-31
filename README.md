@@ -150,6 +150,10 @@ alliance France, Russian Empire
 war Serbia, Austria-Hungary
 ```
 
+### Map editor
+
+*Map editor* in the main menu opens an editor on a random, Europe or World map: select a nation in the list and click provinces to give them to it (switch *Click assigns province* off to just inspect), create new nations (name and colour), rename nations, change the name and population of a province, and finally *Save as scenario*. The scenario is written to `mods/scenarios/<id>.txt` and appears in the scenario list after the next start; for random worlds the seed is stored in the file so the province numbers stay valid. Extra scenario lines: `provname <id> <name>`, `population <id> <number>`, `seed <number>`.
+
 ## Mods
 
 Create a folder `mods` next to the game (next to `saves`); `mods-example/` is a template you can copy. Everything is optional and read at start-up:

@@ -45,6 +45,7 @@ public final class SelfTest {
         run("scenarios", SelfTest::scenarios);
         run("mods", SelfTest::mods);
         run("navy", SelfTest::navy);
+        run("map editor", SelfTest::mapEditor);
         run("events and decisions", SelfTest::events);
         run("language files", SelfTest::languages);
         run("save and load", SelfTest::saveLoad);
@@ -575,6 +576,36 @@ public final class SelfTest {
             check(g.isBlockaded(coast), "an enemy fleet blockades the adjacent coast");
             check(g.monthlyIncome(enemy) < before, "a blockade cuts the income");
         }
+    }
+
+    private static void mapEditor() throws IOException {
+        mapgame.sim.MapEditor ed = new mapgame.sim.MapEditor(MapKind.RANDOM, 42);
+        Country atlantis = ed.newCountry("Atlantis", 0x8844AA);
+        check(atlantis != null && ed.newCountry("Atlantis", 1) == null, "new nations need a unique name");
+        check(ed.newCountry("Bad,Name", 1) == null && ed.newCountry("A=B", 1) == null, "names may not contain scenario syntax");
+        Province land = null;
+        for (Province p : ed.game.world.provinces) if (p.isLand() && p.owner != null && p.owner.provinces.size() > 3) land = p;
+        check(land != null && ed.assign(land, atlantis), "a province can be given to a nation");
+        check(land.owner == atlantis && atlantis.capital == land, "the new nation gets a capital");
+        Country other = null;
+        for (Country c : ed.nations()) if (c != atlantis) other = c;
+        String oldName = other.name;
+        check(ed.rename(other, "Renamed Land"), "nations can be renamed");
+        ed.setName(land, "Port Atlantis");
+        ed.setPopulation(land, 123_456);
+
+        String text = ed.export("Editor test", 1920);
+        check(text.contains("seed 42") && text.contains("newcountry Atlantis 8844AA") && text.contains("owner " + land.id + " Atlantis"), "the export lists the changes");
+        check(text.contains("rename " + oldName + " = Renamed Land") && text.contains("provname " + land.id + " Port Atlantis"), "the export lists renames");
+
+        mapgame.sim.Scenario sc = mapgame.sim.Scenario.parseForTest("editor_test", text);
+        check(sc.seed != null && sc.seed == 42 && sc.startYear == 1920, "the exported scenario can be read back");
+        Game g = Game.create(MapKind.RANDOM, sc.seed, sc);
+        Province again = g.world.provinces.get(land.id);
+        check(again.owner != null && again.owner.name.equals("Atlantis"), "the scenario recreates the new owner");
+        check(again.name.equals("Port Atlantis") && again.population == 123_456, "the scenario recreates names and population");
+        check(g.world.countries.stream().anyMatch(c -> c.alive && c.name.equals("Renamed Land")), "the scenario recreates renamed nations");
+        for (int i = 0; i < 100; i++) g.tickDay();
     }
 
     private static void fogOfWar() {

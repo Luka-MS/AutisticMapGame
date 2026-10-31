@@ -50,6 +50,8 @@ public final class MainMenuPanel extends JPanel {
 
         void resume();
 
+        void editor();
+
         void quit();
     }
 
@@ -64,7 +66,7 @@ public final class MainMenuPanel extends JPanel {
     private final Map<MapKind, JTextArea> descriptions = new EnumMap<>(MapKind.class);
     private final Map<MapKind, JButton> playButtons = new EnumMap<>(MapKind.class);
     private final Set<MapKind> previewFailed = EnumSet.noneOf(MapKind.class);
-    private final JButton resumeBtn = new JButton(), quitBtn = new JButton(), loadBtn = new JButton(), rerollBtn = new JButton();
+    private final JButton resumeBtn = new JButton(), quitBtn = new JButton(), loadBtn = new JButton(), rerollBtn = new JButton(), editorBtn = new JButton();
     private final JLabel subtitle = new JLabel("", SwingConstants.CENTER), languageLabel = new JLabel();
     private final JComboBox<Language> languageBox = new JComboBox<>(Language.values());
     private final JComboBox<Difficulty> difficultyBox = new JComboBox<>(Difficulty.values());
@@ -158,8 +160,9 @@ public final class MainMenuPanel extends JPanel {
         bottom.setOpaque(false);
         resumeBtn.addActionListener(e -> listener.resume());
         loadBtn.addActionListener(e -> listener.load());
+        editorBtn.addActionListener(e -> listener.editor());
         quitBtn.addActionListener(e -> listener.quit());
-        for (JButton b : new JButton[] {resumeBtn, loadBtn, quitBtn}) {
+        for (JButton b : new JButton[] {resumeBtn, loadBtn, editorBtn, quitBtn}) {
             b.setFocusable(false);
             b.setPreferredSize(new Dimension(200, 36));
             bottom.add(b);
@@ -203,6 +206,7 @@ public final class MainMenuPanel extends JPanel {
         scenarioBox.repaint();
         resumeBtn.setText(I18n.tr("menu.resume"));
         loadBtn.setText(I18n.tr("menu.load"));
+        editorBtn.setText(I18n.tr("menu.editor"));
         quitBtn.setText(I18n.tr("menu.quit"));
         rerollBtn.setText(I18n.tr("menu.reroll"));
         rerollBtn.setToolTipText(I18n.tr("menu.reroll.tip"));
@@ -332,6 +336,7 @@ public final class MainMenuPanel extends JPanel {
         for (JPanel card : cards.values()) setEnabledRecursive(card, enabled);
         resumeBtn.setEnabled(enabled);
         loadBtn.setEnabled(enabled);
+        editorBtn.setEnabled(enabled);
         setCursor(Cursor.getPredefinedCursor(enabled ? Cursor.DEFAULT_CURSOR : Cursor.WAIT_CURSOR));
     }
 

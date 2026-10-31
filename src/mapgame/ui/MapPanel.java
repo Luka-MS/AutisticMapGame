@@ -202,6 +202,20 @@ public final class MapPanel extends JPanel {
         return selectedFleet;
     }
 
+    /** Called for every left-click on a province before the normal selection (used by the map editor). */
+    public void setClickHandler(java.util.function.Consumer<Province> handler) {
+        clickHandler = handler;
+    }
+
+    private java.util.function.Consumer<Province> clickHandler;
+    private boolean showArmies = true;
+
+    /** The map editor hides armies and fleets. */
+    public void setShowArmies(boolean show) {
+        showArmies = show;
+        repaint();
+    }
+
     public void selectFleet(Fleet f) {
         selectedFleet = f;
         if (f != null) {
@@ -351,6 +365,10 @@ public final class MapPanel extends JPanel {
     // ---------------------------------------------------------------- input
 
     private void click(int sx, int sy) {
+        if (clickHandler != null) {
+            Province hit = provinceAt(sx, sy);
+            if (hit != null) clickHandler.accept(hit);
+        }
         for (int i = fleetBoxes.size() - 1; i >= 0; i--) {
             FleetBox b = fleetBoxes.get(i);
             if (b.rect.contains(sx, sy)) {
@@ -663,6 +681,7 @@ public final class MapPanel extends JPanel {
     /** Fleets are drawn as ship-shaped counters below the armies: owner colour, strength and the men on board. */
     private void drawFleets(Graphics2D g) {
         fleetBoxes.clear();
+        if (!showArmies) return;
         double s = Math.max(0.8, Math.min(1.4, zoom));
         int w = (int) (56 * s), h = (int) (20 * s);
         g.setFont(getFont().deriveFont(Font.BOLD, (float) (11 * s)));
@@ -713,6 +732,7 @@ public final class MapPanel extends JPanel {
 
     private void drawArmies(Graphics2D g) {
         boxes.clear();
+        if (!showArmies) return;
         double s = Math.max(0.8, Math.min(1.4, zoom));
         int w = (int) (50 * s), h = (int) (20 * s);
         Font font = getFont().deriveFont(Font.BOLD, (float) (11 * s));
