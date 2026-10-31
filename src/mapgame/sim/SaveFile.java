@@ -33,8 +33,8 @@ import mapgame.model.TechField;
 public final class SaveFile {
     public static final String EXTENSION = ".sav";
     private static final int MAGIC = 0x4D47534D;
-    /** Format version; each feature added fields (2 conquest day ... 16 fleets, 17 hotseat players). Older versions load too. */
-    private static final int VERSION = 17;
+    /** Format version; each feature added fields (2 conquest day ... 17 hotseat players, 18 statistics). Older versions load too. */
+    private static final int VERSION = 18;
 
     private SaveFile() {
     }
@@ -191,6 +191,7 @@ public final class SaveFile {
             out.writeInt(cargo.size());
             for (Army a : cargo) out.writeInt(a.id);
         }
+        g.stats.write(out);
     }
 
     // ---------------------------------------------------------------- reading
@@ -382,6 +383,13 @@ public final class SaveFile {
                 }
                 g.fleets.add(f);
             }
+        }
+        // Older saves have no history: the chart starts at the loaded day.
+        if (version >= 18) {
+            g.stats.read(in);
+        } else {
+            g.stats.clear();
+            g.stats.record(g);
         }
 
         g.world.recomputeLabels();

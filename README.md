@@ -126,7 +126,7 @@ Press **N** (or *Nation management*) to open the nation window. It collects ever
 - **Research:** pick one of three fields - *military* (+6% damage dealt, -4% damage taken per level), *economy* (+8% gold) or *administration* (+10% manpower, -4% army upkeep, faster research). Five levels each; the cost grows with every level (12, 24, 36, 48, 60 points) and large nations earn more points per month.
 
 - **Diplomacy** (select a province of the other nation, *Diplomacy* page): alliances (see above), *non-aggression pacts* (10 years, nobody can declare war meanwhile), *guarantees of independence* (one-sided; if the protégé is attacked the guarantor is called to arms), *trade agreements* (+6% gold for both, up to three, they end with a war). The **war goal** of your next declaration is chosen here: *conquest* (the usual land deal) or *tribute* (no land changes hands, the loser pays 30% of its gold).
-
+- **Statistics:** every month the game records provinces, population, army, navy, gold and income of every nation (saved with the game). The *Statistics* page draws them as line charts: pick a metric, select any nations in the list (or *Top 8* / *Only me*) and hover the chart to read exact values.
 ### Random events
 
 Every month each nation has a small chance of an event: *bumper harvest*, *plague*, *peasant revolt*, *trade treaty* (+10% gold for five years), *army reform*, *natural disaster* and *coup attempt* (when bankrupt). When it hits you, a dialog asks for your decision and the game waits; the AI decides by itself. What matters to you also shows up in the Events tab.

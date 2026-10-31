@@ -65,6 +65,8 @@ public final class Game {
     public int aggression = 50;
     /** Provinces where fighting happened recently (value = day of the last fighting); used for the battle markers, not saved. */
     public final Map<Province, Integer> recentBattles = new HashMap<>();
+    /** Monthly history of all nations for the statistics charts. */
+    public final Stats stats;
 
     /** Records fighting in a province and forgets old battles. */
     void noteBattle(Province p) {
@@ -130,6 +132,8 @@ public final class Game {
         mergeArmies();
         world.recomputeLabels();
         if (scenario != null) scenario.applyToGame(this);
+        stats = new Stats(world.countries.size());
+        stats.record(this);
     }
 
     // ---------------------------------------------------------------- calendar / log
@@ -1319,6 +1323,7 @@ public final class Game {
                 for (Army a : armies) if (a.owner == c) a.strength = (int) (a.strength * 0.97);
             }
         }
+        stats.record(this);
     }
 
     public List<Country> aliveCountries() {

@@ -48,6 +48,7 @@ public final class SelfTest {
         run("map editor", SelfTest::mapEditor);
         run("sound", SelfTest::sounds);
         run("hotseat", SelfTest::hotseat);
+        run("statistics", SelfTest::statistics);
         run("events and decisions", SelfTest::events);
         run("language files", SelfTest::languages);
         run("save and load", SelfTest::saveLoad);
@@ -658,6 +659,35 @@ public final class SelfTest {
             SaveFile.save(g, file);
             Game h = SaveFile.load(file);
             check(h.humans.size() == 2 && h.player != null && h.player.id == a.id, "a save remembers the hotseat players");
+        } finally {
+            Files.deleteIfExists(file);
+        }
+    }
+
+    private static void statistics() throws IOException {
+        Game g = newGame();
+        check(g.stats.size() == 1, "the history starts with a sample of the start situation");
+        for (int i = 0; i < 360 * 2; i++) g.tickDay();
+        check(g.stats.size() == 1 + 24, "one sample per month (" + g.stats.size() + ")");
+        int provinces = 0;
+        for (Country c : g.world.countries) provinces += g.stats.value(g.stats.size() - 1, c, mapgame.sim.Stats.Metric.PROVINCES);
+        int owned = 0;
+        for (Country c : g.world.countries) if (c.alive) owned += c.provinces.size();
+        check(provinces == owned, "the last sample matches the current land (" + provinces + " of " + owned + ")");
+        Country c0 = g.world.countries.get(0);
+        check(g.stats.series(c0, mapgame.sim.Stats.Metric.GOLD).length == g.stats.size(), "a series has one value per sample");
+        check(g.stats.day(g.stats.size() - 1) > g.stats.day(0), "samples are in time order");
+        Path file = Files.createTempFile("stats", SaveFile.EXTENSION);
+        try {
+            SaveFile.save(g, file);
+            Game h = SaveFile.load(file);
+            boolean same = h.stats.size() == g.stats.size();
+            for (int i = 0; same && i < g.stats.size(); i++) {
+                for (Country c : g.world.countries) {
+                    for (mapgame.sim.Stats.Metric m : mapgame.sim.Stats.Metric.values()) same &= g.stats.value(i, c, m) == h.stats.value(i, h.world.countries.get(c.id), m);
+                }
+            }
+            check(same, "a save keeps the whole history");
         } finally {
             Files.deleteIfExists(file);
         }
