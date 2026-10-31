@@ -31,6 +31,7 @@ public final class SelfTest {
         run("occupation", SelfTest::occupation);
         run("peace deal limits", SelfTest::peaceLimits);
         run("alliances", SelfTest::alliances);
+        run("treaties and war goals", SelfTest::treaties);
         run("supply and attrition", SelfTest::supply);
         run("group reinforcement", SelfTest::reinforcement);
         run("front planner", SelfTest::frontPlanner);
@@ -373,6 +374,56 @@ public final class SelfTest {
         check(raw.general() == null && vet.general() != null && vet.generalSkill() == 2, "veteran armies get a general");
         raw.morale = 20;
         check(raw.attackBonus() < vet.attackBonus(), "shaken and green armies hit weaker");
+    }
+
+    private static void treaties() {
+        Game g = newGame();
+        Province[] b = border(g);
+        Country a = b[0].owner, o = b[1].owner;
+        g.player = a;
+        g.proposePact(a, o);
+        check(g.hasPact(a, o), "a non-aggression pact is signed");
+        check(!g.declareWar(a, o), "a pact prevents war");
+        g.cancelPact(a, o);
+        check(!g.hasPact(a, o) && g.declareWar(a, o), "after cancelling, war is possible");
+        check(g.proposeTrade(a, o) != null && !g.hasTrade(a, o), "no trade during a war");
+        g.makePeace(a, o);
+
+        double income = g.monthlyIncome(a);
+        g.proposeTrade(a, o);
+        check(g.hasTrade(a, o) && g.monthlyIncome(a) > income, "a trade agreement raises the income");
+        g.declareWar(a, o);
+        check(!g.hasTrade(a, o), "war ends trade");
+
+        // Tribute war: no land, gold changes hands.
+        Game h = newGame();
+        Province[] c = border(h);
+        Country x = c[0].owner, y = c[1].owner;
+        h.player = x;
+        h.declareWar(x, y);
+        check(h.warGoal(x, y) == Game.WarGoal.CONQUEST, "the default war goal is conquest");
+        h.nextWarGoal = Game.WarGoal.TRIBUTE;
+        h.makePeace(x, y);
+        h.declareWar(x, y);
+        check(h.warGoal(x, y) == Game.WarGoal.TRIBUTE, "the player's war goal is used");
+        int landBefore = y.provinces.size();
+        for (Province p : new ArrayList<>(y.provinces)) p.controller = x;
+        double goldY = y.gold, goldX = x.gold;
+        h.makePeace(x, y);
+        check(y.provinces.size() == landBefore, "a tribute war takes no land");
+        check(y.gold < goldY && x.gold > goldX, "the loser pays tribute");
+
+        // A guarantor is notified when its protégé is attacked.
+        Game k = newGame();
+        Province[] d = border(k);
+        Country gu = d[0].owner, prot = d[1].owner;
+        k.player = gu;
+        k.guarantee(gu, prot);
+        Country attacker = null;
+        for (Country z : k.world.countries) if (z != gu && z != prot && z.alive) attacker = z;
+        int events = k.events.size();
+        k.declareWar(attacker, prot);
+        check(k.events.size() > events, "the guarantor is notified");
     }
 
     private static void fogOfWar() {

@@ -689,9 +689,9 @@ public final class GameWindow extends JFrame {
         mergeBtn.setEnabled(mine && game.mergeCandidates(sa) > 0);
         boolean atWarWithSel = foreign && game.atWar(me, sel.owner);
         boolean alliedWithSel = foreign && game.allied(me, sel.owner);
-        warBtn.setEnabled(foreign && !atWarWithSel && !alliedWithSel);
+        warBtn.setEnabled(foreign && !atWarWithSel && !alliedWithSel && !game.hasPact(me, sel.owner));
         boolean totalWithSel = atWarWithSel && game.isTotalWar(me, sel.owner);
-        totalWarBtn.setEnabled(foreign && !totalWithSel && !alliedWithSel);
+        totalWarBtn.setEnabled(foreign && !totalWithSel && !alliedWithSel && !game.hasPact(me, sel.owner));
         allianceBtn.setEnabled(foreign && !atWarWithSel);
         allianceBtn.setText(!foreign ? I18n.tr("btn.alliance")
                 : I18n.tr(alliedWithSel ? "btn.alliance.break" : "btn.alliance.propose", sel.owner.displayName()));

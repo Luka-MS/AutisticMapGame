@@ -32,8 +32,8 @@ import mapgame.model.TechField;
 public final class SaveFile {
     public static final String EXTENSION = ".sav";
     private static final int MAGIC = 0x4D47534D;
-    /** Format version; each feature added fields (2 conquest day ... 11 events, 12 morale). Older versions load too. */
-    private static final int VERSION = 12;
+    /** Format version; each feature added fields (2 conquest day ... 12 morale, 13 treaties). Older versions load too. */
+    private static final int VERSION = 13;
 
     private SaveFile() {
     }
@@ -116,6 +116,20 @@ public final class SaveFile {
         for (long k : g.totalWars) out.writeLong(k);
         out.writeInt(g.alliances.size());
         for (long k : g.alliances) out.writeLong(k);
+        out.writeInt(g.pacts.size());
+        for (Map.Entry<Long, Integer> e : g.pacts.entrySet()) {
+            out.writeLong(e.getKey());
+            out.writeInt(e.getValue());
+        }
+        out.writeInt(g.guarantees.size());
+        for (long k : g.guarantees) out.writeLong(k);
+        out.writeInt(g.trades.size());
+        for (long k : g.trades) out.writeLong(k);
+        out.writeInt(g.warGoals.size());
+        for (Map.Entry<Long, Integer> e : g.warGoals.entrySet()) {
+            out.writeLong(e.getKey());
+            out.writeInt(e.getValue());
+        }
 
         List<Army> alive = g.armies.stream().filter(a -> !a.dead).toList();
         out.writeInt(alive.size());
@@ -239,6 +253,20 @@ public final class SaveFile {
         if (version >= 5) {
             int pacts = in.readInt();
             for (int i = 0; i < pacts; i++) g.alliances.add(in.readLong());
+        }
+        g.pacts.clear();
+        g.guarantees.clear();
+        g.trades.clear();
+        g.warGoals.clear();
+        if (version >= 13) {
+            int n = in.readInt();
+            for (int i = 0; i < n; i++) g.pacts.put(in.readLong(), in.readInt());
+            n = in.readInt();
+            for (int i = 0; i < n; i++) g.guarantees.add(in.readLong());
+            n = in.readInt();
+            for (int i = 0; i < n; i++) g.trades.add(in.readLong());
+            n = in.readInt();
+            for (int i = 0; i < n; i++) g.warGoals.put(in.readLong(), in.readInt());
         }
 
         g.armies.clear();

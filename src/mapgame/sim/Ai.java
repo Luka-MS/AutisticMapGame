@@ -76,10 +76,36 @@ final class Ai {
         return false;
     }
 
+    /** Non-aggression pacts with neighbours, trade agreements, and guarantees for small neighbours of a hegemon. */
+    private static void extraDiplomacy(Game g, Country c, Country hegemon) {
+        if (g.rnd.nextDouble() < 0.03 && g.pactsOf(c) < 1) {
+            List<Country> options = new ArrayList<>();
+            for (Country o : g.world.countries) {
+                if (o.alive && o != c && o != g.player && !g.atWar(c, o) && !g.allied(c, o) && !g.hasPact(c, o) && g.bordersCountry(c, o)) options.add(o);
+            }
+            if (!options.isEmpty()) g.proposePact(c, options.get(g.rnd.nextInt(options.size())));
+        }
+        if (g.rnd.nextDouble() < 0.15 && g.tradesOf(c) < Game.MAX_TRADES) {
+            List<Country> options = new ArrayList<>();
+            for (Country o : g.world.countries) {
+                if (o.alive && o != c && o != g.player && !g.atWar(c, o) && !g.hasTrade(c, o) && g.tradesOf(o) < Game.MAX_TRADES) options.add(o);
+            }
+            if (!options.isEmpty()) g.makeTrade(c, options.get(g.rnd.nextInt(options.size())));
+        }
+        if (hegemon != null && hegemon != c && g.rnd.nextDouble() < 0.05) {
+            List<Country> options = new ArrayList<>();
+            for (Country o : g.world.countries) {
+                if (o.alive && o != c && o != hegemon && !g.guarantees(c, o) && g.strength(o) < g.strength(c) && g.bordersCountry(o, hegemon)) options.add(o);
+            }
+            if (!options.isEmpty()) g.guarantee(c, options.get(g.rnd.nextInt(options.size())));
+        }
+    }
+
     /** Once a month: drop an alliance with a hegemon, and look for a new partner against a shared threat. */
     private static void diplomacy(Game g, Country c) {
         if (g.day % 30 != 0) return;
         Country h = g.hegemon();
+        extraDiplomacy(g, c, h);
         for (Country ally : g.alliesOf(c)) {
             if (ally == h && g.rnd.nextDouble() < 0.5) g.breakAlliance(c, ally);
         }
@@ -116,6 +142,7 @@ final class Ai {
             int duration = g.day - g.warStart(c, f);
             // War goal: the AI fights for a limited share of the enemy's land and settles once it holds that.
             int goal = Math.max(1, (int) Math.ceil(f.provinces.size() * Game.PEACE_SHARE * 0.6));
+            if (g.warGoal(c, f) == Game.WarGoal.TRIBUTE) goal = 1;
             double chance = g.warScore(c, f) < 0 ? 0.06 : (duration > 120 ? 0.03 : 0);
             if (g.warScore(c, f) >= goal) chance = Math.max(chance, 0.15);
             if (g.rnd.nextDouble() < chance) {
@@ -178,11 +205,11 @@ final class Ai {
             }
         }
         List<Country> targets = new ArrayList<>();
-        for (Country n : neighbors) if (g.strength(n) * 1.5 < mine) targets.add(n);
+        for (Country n : neighbors) if (g.strength(n) * 1.5 < mine && !g.hasPact(c, n)) targets.add(n);
         if (targets.isEmpty()) return;
         Country target = targets.get(g.rnd.nextInt(targets.size()));
         // Rarely a strong nation goes for the kill against a much weaker neighbour.
         boolean total = c.provinces.size() >= 6 && g.strength(target) * 3 < mine && g.rnd.nextDouble() < 0.08;
-        g.declareWar(c, target, total);
+        if (g.declareWar(c, target, total) && !total && g.rnd.nextDouble() < 0.3) g.setWarGoal(c, target, Game.WarGoal.TRIBUTE);
     }
 }

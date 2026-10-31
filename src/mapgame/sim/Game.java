@@ -164,7 +164,7 @@ public final class Game {
     }
 
     private boolean declareWar(Country a, Country b, boolean total, boolean callAllies) {
-        if (a == b || !a.alive || !b.alive || allied(a, b)) return false;
+        if (a == b || !a.alive || !b.alive || allied(a, b) || hasPact(a, b)) return false;
         if (atWar(a, b)) {
             if (!total || isTotalWar(a, b)) return false;
             totalWars.add(key(a, b));
@@ -172,14 +172,26 @@ public final class Game {
             return true;
         }
         wars.put(key(a, b), day);
+        warGoals.put(key(a, b), (a == player ? nextWarGoal : WarGoal.CONQUEST).ordinal());
+        trades.remove(key(a, b));
+        guarantees.remove(directed(a, b));
+        guarantees.remove(directed(b, a));
         warsDeclared++;
         if (total) {
             totalWars.add(key(a, b));
             totalWarsDeclared++;
         }
         report(I18n.tr(total ? "war.declared.total" : "war.declared", a.displayName(), b.displayName()), null, a, b);
-        if (callAllies) callToArms(a, b);
+        if (callAllies) {
+            callToArms(a, b);
+            callGuarantors(a, b);
+        }
         return true;
+    }
+
+    /** AI nations pick their war goal after declaring. */
+    void setWarGoal(Country a, Country b, WarGoal goal) {
+        if (atWar(a, b)) warGoals.put(key(a, b), goal.ordinal());
     }
 
     // ---------------------------------------------------------------- alliances
@@ -262,6 +274,134 @@ public final class Game {
         evictArmies();
     }
 
+    // ---------------------------------------------------------------- pacts, guarantees, trade, war goals
+
+    public static final int PACT_DAYS = 3600;
+    public static final int MAX_TRADES = 3;
+    /** Share of the loser's gold a tribute war takes. */
+    public static final double TRIBUTE_SHARE = 0.30;
+
+    public enum WarGoal {
+        /** The usual war: occupied land changes hands in the peace deal. */
+        CONQUEST,
+        /** No land changes hands, the loser pays a share of its gold. */
+        TRIBUTE;
+
+        public String label() {
+            return I18n.tr("goal." + name());
+        }
+    }
+
+    /** Non-aggression pacts: pair -> day the pact runs out. */
+    final Map<Long, Integer> pacts = new HashMap<>();
+    /** Guarantees: (guarantor id << 32 | guaranteed id). */
+    final Set<Long> guarantees = new HashSet<>();
+    final Set<Long> trades = new HashSet<>();
+    /** War goal per war: pair -> goal ordinal. */
+    final Map<Long, Integer> warGoals = new HashMap<>();
+    /** The goal the player's next declaration of war uses (not saved). */
+    public WarGoal nextWarGoal = WarGoal.CONQUEST;
+
+    private static long directed(Country from, Country to) {
+        return ((long) from.id << 32) | to.id;
+    }
+
+    public boolean hasPact(Country a, Country b) {
+        Integer until = pacts.get(key(a, b));
+        return until != null && day < until;
+    }
+
+    /** Number of running non-aggression pacts of a nation. */
+    public int pactsOf(Country c) {
+        int n = 0;
+        for (Map.Entry<Long, Integer> e : pacts.entrySet()) {
+            long k = e.getKey();
+            if (day < e.getValue() && ((k >> 32) == c.id || (k & 0xFFFFFFFFL) == c.id)) n++;
+        }
+        return n;
+    }
+
+    public int pactEnds(Country a, Country b) {
+        return pacts.getOrDefault(key(a, b), 0);
+    }
+
+    public boolean guarantees(Country guarantor, Country guaranteed) {
+        return guarantees.contains(directed(guarantor, guaranteed));
+    }
+
+    public boolean hasTrade(Country a, Country b) {
+        return trades.contains(key(a, b));
+    }
+
+    public int tradesOf(Country c) {
+        int n = 0;
+        for (Country o : world.countries) if (o.alive && hasTrade(c, o)) n++;
+        return n;
+    }
+
+    public WarGoal warGoal(Country a, Country b) {
+        Integer g = warGoals.get(key(a, b));
+        return g == null ? WarGoal.CONQUEST : WarGoal.values()[g];
+    }
+
+    /** Proposes a non-aggression pact for ten years. */
+    public String proposePact(Country from, Country to) {
+        if (atWar(from, to)) return I18n.tr("pact.atwar", to.displayName());
+        if (hasPact(from, to)) return I18n.tr("pact.already", to.displayName());
+        if (strength(to) > strength(from) * 2 && bordersCountry(from, to)) return I18n.tr("pact.refuses", to.displayName());
+        pacts.put(key(from, to), day + PACT_DAYS);
+        report(I18n.tr("pact.signed", from.displayName(), to.displayName()), null, from, to);
+        return I18n.tr("pact.accepts", to.displayName());
+    }
+
+    public void cancelPact(Country a, Country b) {
+        if (pacts.remove(key(a, b)) != null) report(I18n.tr("pact.cancelled", a.displayName(), b.displayName()), null, a, b);
+    }
+
+    /** One-sided: the guarantor promises to come to the aid of the guaranteed nation. */
+    public boolean guarantee(Country guarantor, Country guaranteed) {
+        if (guarantor == guaranteed || !guarantor.alive || !guaranteed.alive || atWar(guarantor, guaranteed)) return false;
+        if (!guarantees.add(directed(guarantor, guaranteed))) return false;
+        report(I18n.tr("guarantee.given", guarantor.displayName(), guaranteed.displayName()), null, guarantor, guaranteed);
+        return true;
+    }
+
+    public void revokeGuarantee(Country guarantor, Country guaranteed) {
+        if (guarantees.remove(directed(guarantor, guaranteed))) {
+            report(I18n.tr("guarantee.revoked", guarantor.displayName(), guaranteed.displayName()), null, guarantor, guaranteed);
+        }
+    }
+
+    /** Proposes a trade agreement: both sides earn 6% more gold per agreement (at most three). */
+    public String proposeTrade(Country from, Country to) {
+        if (atWar(from, to)) return I18n.tr("trade.atwar", to.displayName());
+        if (hasTrade(from, to)) return I18n.tr("trade.already", to.displayName());
+        if (tradesOf(from) >= MAX_TRADES) return I18n.tr("trade.full.us");
+        if (tradesOf(to) >= MAX_TRADES) return I18n.tr("trade.full", to.displayName());
+        makeTrade(from, to);
+        return I18n.tr("trade.accepts", to.displayName());
+    }
+
+    void makeTrade(Country a, Country b) {
+        if (!trades.add(key(a, b))) return;
+        report(I18n.tr("trade.signed", a.displayName(), b.displayName()), null, a, b);
+    }
+
+    public void cancelTrade(Country a, Country b) {
+        if (trades.remove(key(a, b))) report(I18n.tr("trade.cancelled", a.displayName(), b.displayName()), null, a, b);
+    }
+
+    /** Guarantors of the victim join like allies do. */
+    private void callGuarantors(Country aggressor, Country victim) {
+        for (Country o : world.countries) {
+            if (!o.alive || o == aggressor || !guarantees(o, victim) || atWar(o, aggressor) || allied(o, aggressor) || o == player) continue;
+            if (rnd.nextDouble() < 0.6) declareWar(o, aggressor, false, false);
+        }
+        if (player != null && guarantees(player, victim) && player != aggressor && !atWar(player, aggressor)) {
+            report(I18n.tr("guarantee.callarms", victim.displayName(), aggressor.displayName()), null, player);
+        }
+    }
+
     public boolean isTotalWar(Country a, Country b) {
         return a != null && b != null && totalWars.contains(key(a, b));
     }
@@ -281,14 +421,30 @@ public final class Game {
     public void makePeace(Country a, Country b) {
         if (!atWar(a, b) || isTotalWar(a, b)) return;
         int ownedA = a.provinces.size(), ownedB = b.provinces.size();
-        int moved = transferOnPeace(a, b, ownedB) + transferOnPeace(b, a, ownedA);
+        int moved = 0, paid = 0;
+        Country payer = null;
+        if (warGoal(a, b) == WarGoal.TRIBUTE) {
+            // No land changes hands: occupied provinces go back and the loser pays a share of its gold.
+            for (Province p : b.provinces) if (p.controller == a) p.controller = b;
+            for (Province p : a.provinces) if (p.controller == b) p.controller = a;
+            payer = warScore(a, b) >= 0 ? b : a;
+            Country receiver = payer == a ? b : a;
+            paid = (int) (Math.max(0, payer.gold) * TRIBUTE_SHARE);
+            payer.gold -= paid;
+            receiver.gold += paid;
+        } else {
+            moved = transferOnPeace(a, b, ownedB) + transferOnPeace(b, a, ownedA);
+        }
         wars.remove(key(a, b));
+        warGoals.remove(key(a, b));
         peaceDeals++;
         relocateCapital(a);
         relocateCapital(b);
         a.truceUntil = Math.max(a.truceUntil, day + TRUCE_DAYS);
         b.truceUntil = Math.max(b.truceUntil, day + TRUCE_DAYS);
-        report(I18n.tr("peace.made", a.displayName(), b.displayName()) + (moved == 0 ? "" : " " + I18n.tr("peace.moved", moved)), null, a, b);
+        String outcome = payer != null ? " " + I18n.tr("peace.tribute", payer.displayName(), paid)
+                : moved == 0 ? "" : " " + I18n.tr("peace.moved", moved);
+        report(I18n.tr("peace.made", a.displayName(), b.displayName()) + outcome, null, a, b);
         evictArmies();
         checkElimination(a);
         checkElimination(b);
@@ -386,7 +542,7 @@ public final class Game {
     public double monthlyIncome(Country c) {
         double inc = 0;
         for (Province p : c.provinces) if (p.controller == c) inc += p.income(day);
-        double bonus = day < c.incomeBonusUntil ? 1 + c.incomeBonus : 1;
+        double bonus = (day < c.incomeBonusUntil ? 1 + c.incomeBonus : 1) * (1 + 0.06 * tradesOf(c));
         return inc * (1 + 0.08 * c.techLevel(TechField.ECONOMY)) * c.taxes.gold * c.conscription.gold * bonus;
     }
 
@@ -1001,6 +1157,10 @@ public final class Game {
         wars.keySet().removeIf(k -> (k >> 32) == c.id || (k & 0xFFFFFFFFL) == c.id);
         totalWars.removeIf(k -> (k >> 32) == c.id || (k & 0xFFFFFFFFL) == c.id);
         alliances.removeIf(k -> (k >> 32) == c.id || (k & 0xFFFFFFFFL) == c.id);
+        pacts.keySet().removeIf(k -> (k >> 32) == c.id || (k & 0xFFFFFFFFL) == c.id);
+        guarantees.removeIf(k -> (k >> 32) == c.id || (k & 0xFFFFFFFFL) == c.id);
+        trades.removeIf(k -> (k >> 32) == c.id || (k & 0xFFFFFFFFL) == c.id);
+        warGoals.keySet().removeIf(k -> (k >> 32) == c.id || (k & 0xFFFFFFFFL) == c.id);
         mapDirty = true;
         report(I18n.tr("country.eliminated", c.displayName()), null);
     }
