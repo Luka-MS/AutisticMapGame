@@ -38,13 +38,34 @@ public final class Province {
         return terrain.land;
     }
 
-    /** Gold per month. */
+    /** Day this province last changed owner through a peace deal; far in the past for the starting borders. */
+    public int conqueredDay = NEVER;
+    public static final int NEVER = -100_000;
+    /** Days a conquered province needs to be fully integrated; it yields only half until then. */
+    public static final int INTEGRATION_DAYS = 360;
+
+    /** Share (0.5 - 1.0) of its yield a province delivers {@code day}, lower right after a conquest. */
+    public double integration(int day) {
+        return 0.5 + 0.5 * Math.min(1.0, Math.max(0, day - conqueredDay) / (double) INTEGRATION_DAYS);
+    }
+
+    /** Full gold per month, ignoring integration. */
     public double income() {
         return population / 10000.0;
+    }
+
+    /** Gold per month on the given day. */
+    public double income(int day) {
+        return income() * integration(day);
     }
 
     /** Manpower per month. */
     public int manpowerGain() {
         return (int) (population * 0.0006);
+    }
+
+    /** Manpower per month on the given day. */
+    public int manpowerGain(int day) {
+        return (int) (manpowerGain() * integration(day));
     }
 }

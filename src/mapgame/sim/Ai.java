@@ -15,18 +15,43 @@ final class Ai {
     }
 
     static void think(Game g, Country c) {
+        if (c.gold < 0) controlDebt(g, c);
         makePeace(g, c);
         if (!c.alive) return;
+        joinCoalition(g, c);
         List<Country> foes = g.enemiesOf(c);
         if (!foes.isEmpty()) attack(g, c);
         recruit(g, c, !foes.isEmpty());
         if (foes.isEmpty()) maybeDeclareWar(g, c);
     }
 
+    /** A nation in debt cannot pay its soldiers: it sends some of them home until the budget is balanced. */
+    private static void controlDebt(Game g, Country c) {
+        if (g.monthlyUpkeep(c) > g.monthlyIncome(c)) g.demobilize(c, 0.10);
+    }
+
+    /** Neighbours of an over-mighty nation gang up on it; this keeps the strongest AI from snowballing. */
+    private static void joinCoalition(Game g, Country c) {
+        if (g.day < 90 || g.day % 30 != 0) return;
+        Country h = g.hegemon();
+        if (h == null || h == c || g.atWar(c, h) || g.strength(c) < 2000 || g.rnd.nextDouble() > 0.35) return;
+        for (Province p : c.provinces) {
+            for (Province q : p.neighbors) {
+                if (q.owner == h && g.declareWar(c, h)) {
+                    g.coalitionWars++;
+                    return;
+                }
+            }
+        }
+    }
+
     private static void makePeace(Game g, Country c) {
         for (Country f : g.enemiesOf(c)) {
             int duration = g.day - g.warStart(c, f);
+            // War goal: the AI fights for a limited share of the enemy's land and settles once it holds that.
+            int goal = Math.max(1, (int) Math.ceil(f.provinces.size() * Game.PEACE_SHARE * 0.6));
             double chance = g.warScore(c, f) < 0 ? 0.06 : (duration > 120 ? 0.03 : 0);
+            if (g.warScore(c, f) >= goal) chance = Math.max(chance, 0.15);
             if (g.rnd.nextDouble() < chance) {
                 g.makePeace(c, f);
                 if (!c.alive) return;
@@ -81,6 +106,10 @@ final class Ai {
         }
         List<Country> targets = new ArrayList<>();
         for (Country n : neighbors) if (g.strength(n) * 1.5 < mine) targets.add(n);
-        if (!targets.isEmpty()) g.declareWar(c, targets.get(g.rnd.nextInt(targets.size())));
+        if (targets.isEmpty()) return;
+        Country target = targets.get(g.rnd.nextInt(targets.size()));
+        // Rarely a strong nation goes for the kill against a much weaker neighbour.
+        boolean total = c.provinces.size() >= 6 && g.strength(target) * 3 < mine && g.rnd.nextDouble() < 0.08;
+        g.declareWar(c, target, total);
     }
 }

@@ -47,6 +47,8 @@ public final class Game {
     /** Set whenever ownership/control changes so the renderer can rebuild the map. */
     public boolean mapDirty = true;
     public Consumer<String> logSink = s -> { };
+    /** Statistics for the balance tools; not part of a save. */
+    public int warsDeclared, totalWarsDeclared, peaceDeals, eliminations, coalitionWars;
 
     final Map<Long, Integer> wars = new HashMap<>();
     final Set<Long> totalWars = new HashSet<>();
@@ -132,7 +134,11 @@ public final class Game {
             return true;
         }
         wars.put(key(a, b), day);
-        if (total) totalWars.add(key(a, b));
+        warsDeclared++;
+        if (total) {
+            totalWars.add(key(a, b));
+            totalWarsDeclared++;
+        }
         log(I18n.tr(total ? "war.declared.total" : "war.declared", a.displayName(), b.displayName()));
         return true;
     }
@@ -158,6 +164,7 @@ public final class Game {
         int ownedA = a.provinces.size(), ownedB = b.provinces.size();
         int moved = transferOnPeace(a, b, ownedB) + transferOnPeace(b, a, ownedA);
         wars.remove(key(a, b));
+        peaceDeals++;
         a.truceUntil = Math.max(a.truceUntil, day + TRUCE_DAYS);
         b.truceUntil = Math.max(b.truceUntil, day + TRUCE_DAYS);
         log(I18n.tr("peace.made", a.displayName(), b.displayName()) + (moved == 0 ? "" : " " + I18n.tr("peace.moved", moved)));
@@ -178,6 +185,7 @@ public final class Game {
         for (Province p : held) {
             if (moved < quota) {
                 world.setOwner(p, winner);
+                p.conqueredDay = day;
                 moved++;
             } else {
                 p.controller = loser;
@@ -242,7 +250,7 @@ public final class Game {
 
     public double monthlyIncome(Country c) {
         double inc = 0;
-        for (Province p : c.provinces) if (p.controller == c) inc += p.income();
+        for (Province p : c.provinces) if (p.controller == c) inc += p.income(day);
         return inc;
     }
 
@@ -252,7 +260,7 @@ public final class Game {
 
     public int monthlyManpower(Country c) {
         int mp = 0;
-        for (Province p : c.provinces) if (p.controller == c) mp += p.manpowerGain();
+        for (Province p : c.provinces) if (p.controller == c) mp += p.manpowerGain(day);
         return mp;
     }
 
@@ -535,6 +543,7 @@ public final class Game {
         }
         for (Province p : new ArrayList<>(c.provinces)) if (p.controller != c) world.setOwner(p, p.controller);
         c.alive = false;
+        eliminations++;
         for (Army a : armies) if (a.owner == c) a.dead = true;
         wars.keySet().removeIf(k -> (k >> 32) == c.id || (k & 0xFFFFFFFFL) == c.id);
         totalWars.removeIf(k -> (k >> 32) == c.id || (k & 0xFFFFFFFFL) == c.id);
@@ -577,5 +586,34 @@ public final class Game {
         List<Country> out = new ArrayList<>();
         for (Country c : world.countries) if (c.alive) out.add(c);
         return out;
+    }
+
+    /** Share of all owned land above which a nation counts as a hegemon the others band together against. */
+    public static final double HEGEMON_SHARE = 0.20;
+
+    /** The nation holding more than {@link #HEGEMON_SHARE} of all owned provinces, or null. */
+    public Country hegemon() {
+        int total = 0;
+        Country best = null;
+        for (Country c : world.countries) {
+            if (!c.alive) continue;
+            total += c.provinces.size();
+            if (best == null || c.provinces.size() > best.provinces.size()) best = c;
+        }
+        return best != null && best.provinces.size() > total * HEGEMON_SHARE ? best : null;
+    }
+
+    /** Sends a share of a nation's soldiers home (they return to the manpower pool); used to get out of debt. */
+    public void demobilize(Country c, double share) {
+        for (Army a : armies) {
+            if (a.dead || a.owner != c) continue;
+            int released = (int) (a.strength * share);
+            a.strength -= released;
+            c.manpower += released;
+            if (a.strength < 100) {
+                c.manpower += a.strength;
+                a.dead = true;
+            }
+        }
     }
 }

@@ -28,7 +28,8 @@ import mapgame.model.Province;
 public final class SaveFile {
     public static final String EXTENSION = ".sav";
     private static final int MAGIC = 0x4D47534D;
-    private static final int VERSION = 1;
+    /** 2: provinces remember when they were conquered. Older versions can still be read. */
+    private static final int VERSION = 2;
 
     private SaveFile() {
     }
@@ -83,6 +84,7 @@ public final class SaveFile {
         for (Province p : g.world.provinces) {
             out.writeInt(p.owner == null ? -1 : p.owner.id);
             out.writeInt(p.controller == null ? -1 : p.controller.id);
+            out.writeInt(p.conqueredDay);
         }
 
         out.writeInt(g.wars.size());
@@ -131,7 +133,7 @@ public final class SaveFile {
     private static Game read(DataInputStream in) throws IOException {
         if (in.readInt() != MAGIC) throw new IOException(I18n.tr("save.invalid"));
         int version = in.readInt();
-        if (version != VERSION) throw new IOException(I18n.tr("save.version", version));
+        if (version < 1 || version > VERSION) throw new IOException(I18n.tr("save.version", version));
         MapKind kind = MapKind.valueOf(in.readUTF());
         long seed = in.readLong();
         int fingerprint = in.readInt();
@@ -163,6 +165,7 @@ public final class SaveFile {
             int owner = in.readInt(), controller = in.readInt();
             p.owner = owner < 0 ? null : g.world.countries.get(owner);
             p.controller = controller < 0 ? null : g.world.countries.get(controller);
+            if (version >= 2) p.conqueredDay = in.readInt();
         }
 
         g.wars.clear();
