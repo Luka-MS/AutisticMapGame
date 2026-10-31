@@ -6,7 +6,7 @@ import mapgame.i18n.I18n;
 
 public final class Country {
     public final int id;
-    public final String name;
+    public String name;
     public final int rgb;
     public Province capital;
     public double gold;

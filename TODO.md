@@ -37,7 +37,7 @@ Ideas and planned work for Map Game. Tick items off (`[x]`) as they are done.
 
 ## Gameplay and polish
 
-- [ ] **Scenarios and start dates:** real 1936 or 1914 starts with historical borders and nations.
+- [x] **Scenarios and start dates:** *Great Powers 1914* and *Europe 1936* start in their year with the big empires (Austria-Hungary, Russian and Ottoman Empire, Soviet Union, Yugoslavia, ...) and the historical alliances. Since the map data is modern, empires are approximated by merging today's nations; true historical borders would need new map data. Scenarios are plain text files and can be added by mods (see below).
 - [x] **Difficulty settings** (easy / normal / hard: AI and player income), an **AI aggressiveness** slider (0-100) in the main menu, and a **nation picker** table (provinces, population, income, manpower, army; sortable, double-click to choose) next to the Start button.
 - [ ] **Sound and music**, nicer map rendering (terrain textures, rivers, smooth borders), animated battles.
 - [ ] **Multiplayer:** hotseat first, online later.

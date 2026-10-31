@@ -64,20 +64,37 @@ public final class Game {
     int nextArmyId = 1;
 
     public Game(long seed) {
-        this(MapGenerator.generate(seed), seed, MapKind.RANDOM);
+        this(MapGenerator.generate(seed), seed, MapKind.RANDOM, null);
     }
 
     /** Builds a game on the given map type (random or real geography). */
     public static Game create(MapKind kind, long seed) {
-        return kind == MapKind.RANDOM ? new Game(seed) : new Game(RealMapGenerator.generate(kind, seed), seed, kind);
+        return create(kind, seed, null);
     }
 
-    private Game(World world, long seed, MapKind kind) {
+    /** Same, with a scenario (may be null) that changes the start year, nations and alliances; real maps only. */
+    public static Game create(MapKind kind, long seed, Scenario scenario) {
+        if (scenario != null && !scenario.supports(kind)) scenario = null;
+        if (kind == MapKind.RANDOM && scenario == null) return new Game(seed);
+        World w = kind == MapKind.RANDOM ? MapGenerator.generate(seed) : RealMapGenerator.generate(kind, seed);
+        return new Game(w, seed, kind, scenario);
+    }
+
+    /** Id of the scenario this game started from, or null. */
+    public final String scenarioId;
+
+    private Game(World world, long seed, MapKind kind, Scenario scenario) {
         this.world = world;
         this.kind = kind;
         this.seed = seed;
+        this.scenarioId = scenario == null ? null : scenario.id;
         this.rnd = new Random(seed ^ 0x9E3779B97F4A7C15L);
+        if (scenario != null) {
+            scenario.applyToWorld(world);
+            day = (scenario.startYear - 1900) * 360;
+        }
         for (Country c : world.countries) {
+            if (!c.alive) continue;
             c.gold = 300;
             c.manpower = 5000;
             // The starting force must be affordable: one 2000-man army costs 10 gold/month.
@@ -91,6 +108,7 @@ public final class Game {
         }
         mergeArmies();
         world.recomputeLabels();
+        if (scenario != null) scenario.applyToGame(this);
     }
 
     // ---------------------------------------------------------------- calendar / log

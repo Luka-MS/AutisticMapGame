@@ -39,6 +39,7 @@ import mapgame.model.MapKind;
 import mapgame.model.RealMapGenerator;
 import mapgame.model.World;
 import mapgame.sim.Difficulty;
+import mapgame.sim.Scenario;
 
 /** Start screen: pick a random world or a real map. */
 public final class MainMenuPanel extends JPanel {
@@ -68,6 +69,8 @@ public final class MainMenuPanel extends JPanel {
     private final JComboBox<Language> languageBox = new JComboBox<>(Language.values());
     private final JComboBox<Difficulty> difficultyBox = new JComboBox<>(Difficulty.values());
     private final JSlider aggressionSlider = new JSlider(0, 100, 50);
+    private final JComboBox<Scenario> scenarioBox = new JComboBox<>();
+    private final JLabel scenarioLabel = new JLabel();
     private final JLabel difficultyLabel = new JLabel(), aggressionLabel = new JLabel(), aggressionValue = new JLabel();
     private boolean applyingLanguage;
     private final JLabel statusLabel = new JLabel(" ", SwingConstants.CENTER);
@@ -131,6 +134,24 @@ public final class MainMenuPanel extends JPanel {
         settings.add(aggressionValue);
         settings.setAlignmentX(CENTER_ALIGNMENT);
         content.add(settings);
+        content.add(Box.createVerticalStrut(8));
+
+        scenarioBox.setFocusable(false);
+        scenarioBox.addItem(null);
+        for (Scenario s : Scenario.all()) scenarioBox.addItem(s);
+        scenarioBox.setRenderer(new javax.swing.DefaultListCellRenderer() {
+            @Override
+            public java.awt.Component getListCellRendererComponent(javax.swing.JList<?> l, Object v, int i, boolean s, boolean f) {
+                return super.getListCellRendererComponent(l, v == null ? I18n.tr("scenario.none") : ((Scenario) v).label(), i, s, f);
+            }
+        });
+        scenarioLabel.setForeground(MUTED);
+        JPanel scenarioRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 8, 0));
+        scenarioRow.setOpaque(false);
+        scenarioRow.add(scenarioLabel);
+        scenarioRow.add(scenarioBox);
+        scenarioRow.setAlignmentX(CENTER_ALIGNMENT);
+        content.add(scenarioRow);
         content.add(Box.createVerticalStrut(12));
 
         JPanel bottom = new JPanel(new FlowLayout(FlowLayout.CENTER, 16, 0));
@@ -177,6 +198,9 @@ public final class MainMenuPanel extends JPanel {
         aggressionLabel.setText(I18n.tr("menu.aggression"));
         aggressionSlider.setToolTipText(I18n.tr("menu.aggression.tip"));
         difficultyBox.repaint();
+        scenarioLabel.setText(I18n.tr("menu.scenario"));
+        scenarioBox.setToolTipText(I18n.tr("menu.scenario.tip"));
+        scenarioBox.repaint();
         resumeBtn.setText(I18n.tr("menu.resume"));
         loadBtn.setText(I18n.tr("menu.load"));
         quitBtn.setText(I18n.tr("menu.quit"));
@@ -277,6 +301,11 @@ public final class MainMenuPanel extends JPanel {
     private void start(MapKind kind) {
         if (busy) return;
         listener.play(kind, kind == MapKind.RANDOM ? randomSeed : System.nanoTime());
+    }
+
+    /** The chosen scenario, or null for the modern borders. Only real maps use it. */
+    public Scenario scenario() {
+        return (Scenario) scenarioBox.getSelectedItem();
     }
 
     public Difficulty difficulty() {

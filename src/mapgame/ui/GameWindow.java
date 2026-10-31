@@ -57,6 +57,7 @@ import mapgame.model.Province;
 import mapgame.sim.Difficulty;
 import mapgame.sim.Game;
 import mapgame.sim.SaveFile;
+import mapgame.sim.Scenario;
 
 public final class GameWindow extends JFrame {
     /** Real milliseconds per in-game day for speeds 1..5 (index 0 = paused). */
@@ -223,11 +224,12 @@ public final class GameWindow extends JFrame {
     public void startNewGame(MapKind kind, long seed) {
         menu.setBusy(I18n.tr("menu.generating", kind.label()));
         Difficulty difficulty = menu.difficulty();
+        Scenario scenario = menu.scenario();
         int aggression = menu.aggression();
         new SwingWorker<Game, Void>() {
             @Override
             protected Game doInBackground() {
-                Game g = Game.create(kind, seed);
+                Game g = Game.create(kind, seed, scenario);
                 g.difficulty = difficulty;
                 g.aggression = aggression;
                 return g;

@@ -32,8 +32,8 @@ import mapgame.model.TechField;
 public final class SaveFile {
     public static final String EXTENSION = ".sav";
     private static final int MAGIC = 0x4D47534D;
-    /** Format version; each feature added fields (2 conquest day ... 13 treaties, 14 difficulty). Older versions load too. */
-    private static final int VERSION = 14;
+    /** Format version; each feature added fields (2 conquest day ... 14 difficulty, 15 scenario). Older versions load too. */
+    private static final int VERSION = 15;
 
     private SaveFile() {
     }
@@ -65,6 +65,7 @@ public final class SaveFile {
         out.writeInt(VERSION);
         out.writeUTF(g.kind.name());
         out.writeLong(g.seed);
+        out.writeUTF(g.scenarioId == null ? "" : g.scenarioId);
         out.writeInt(Arrays.hashCode(g.world.ids));
         out.writeInt(g.world.provinces.size());
         out.writeInt(g.world.countries.size());
@@ -179,10 +180,13 @@ public final class SaveFile {
         if (version < 1 || version > VERSION) throw new IOException(I18n.tr("save.version", version));
         MapKind kind = MapKind.valueOf(in.readUTF());
         long seed = in.readLong();
+        String scenarioId = version >= 15 ? in.readUTF() : "";
         int fingerprint = in.readInt();
         int provinceCount = in.readInt(), countryCount = in.readInt();
 
-        Game g = Game.create(kind, seed);
+        Scenario scenario = scenarioId.isEmpty() ? null : Scenario.find(scenarioId);
+        if (!scenarioId.isEmpty() && scenario == null) throw new IOException(I18n.tr("save.scenario", scenarioId));
+        Game g = Game.create(kind, seed, scenario);
         if (Arrays.hashCode(g.world.ids) != fingerprint || g.world.provinces.size() != provinceCount
                 || g.world.countries.size() != countryCount) {
             throw new IOException(I18n.tr("save.map"));

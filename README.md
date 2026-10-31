@@ -121,6 +121,22 @@ Every month each nation has a small chance of an event: *bumper harvest*, *plagu
 - *Declare war* starts a normal war. Peace is accepted when the other side is not winning or when the war has dragged on for a long time. The winner takes at most 35% of the loser's provinces, and a nation can never lose its last province in a normal war.
 - *Declare TOTAL war* starts a war that can never end in peace - not by you and not by the AI. It only ends when one of the two nations is eliminated. An existing war can be escalated to total war. The game asks for confirmation first.
 
+### Scenarios
+
+On the Europe and World maps the menu offers a **scenario**: *Great Powers 1914* and *Europe 1936* change the start year and merge today's nations into the empires of the time (Austria-Hungary, Russian Empire, Ottoman Empire, German Empire, Soviet Union, Yugoslavia, Czechoslovakia) with their historical alliances. The map data is modern, so the borders are an approximation. A scenario is a text file in `res/mapgame/data/scenarios/` (listed in `index.txt`) or in `mods/scenarios/`:
+
+```
+name Great Powers 1914
+start 1914
+maps europe world
+merge Austria-Hungary = Austria, Hungary, Czechia      the first nation absorbs the others and is renamed
+rename Germany = German Empire
+newcountry Atlantis 8844AA                              a new nation (RGB colour)
+owner 123 Atlantis                                      province 123 now belongs to it
+alliance France, Russian Empire
+war Serbia, Austria-Hungary
+```
+
 ## The worlds
 
 | World | Description |

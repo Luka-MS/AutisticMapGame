@@ -42,6 +42,7 @@ public final class SelfTest {
         run("research", SelfTest::research);
         run("policies", SelfTest::policies);
         run("difficulty", SelfTest::difficulty);
+        run("scenarios", SelfTest::scenarios);
         run("events and decisions", SelfTest::events);
         run("language files", SelfTest::languages);
         run("save and load", SelfTest::saveLoad);
@@ -445,6 +446,40 @@ public final class SelfTest {
         warlike.aggression = 100;
         for (int i = 0; i < 360 * 5; i++) warlike.tickDay();
         check(warlike.warsDeclared > 0, "with aggression 100 the AI starts wars");
+    }
+
+    private static void scenarios() throws IOException {
+        java.util.List<mapgame.sim.Scenario> all = mapgame.sim.Scenario.all();
+        check(all.stream().anyMatch(s -> s.id.equals("1914")) && all.stream().anyMatch(s -> s.id.equals("1936")), "the bundled scenarios are found");
+        mapgame.sim.Scenario s1914 = mapgame.sim.Scenario.find("1914");
+        check(s1914 != null && s1914.startYear == 1914, "the 1914 scenario starts in 1914");
+        if (s1914 == null) return;
+        Game g = Game.create(MapKind.EUROPE, 3, s1914);
+        check(g.day == 14 * 360, "the calendar starts in the scenario year");
+        Country empire = null;
+        for (Country c : g.world.countries) if (c.alive && c.name.equals("Austria-Hungary")) empire = c;
+        check(empire != null && empire.provinces.size() > 8, "Austria-Hungary is a merged empire");
+        boolean hungaryGone = true;
+        for (Country c : g.world.countries) if (c.alive && c.name.equals("Hungary")) hungaryGone = false;
+        check(hungaryGone, "merged nations disappear");
+        Country germany = null;
+        for (Country c : g.world.countries) if (c.alive && c.name.equals("German Empire")) germany = c;
+        check(germany != null && empire != null && g.allied(germany, empire), "the scenario sets up alliances");
+        for (int i = 0; i < 200; i++) g.tickDay();
+        Path file = Files.createTempFile("scenario", SaveFile.EXTENSION);
+        try {
+            SaveFile.save(g, file);
+            Game h = SaveFile.load(file);
+            check("1914".equals(h.scenarioId) && h.day == g.day, "a save remembers its scenario");
+            check(h.world.countries.stream().filter(c -> c.alive).count() == g.world.countries.stream().filter(c -> c.alive).count(), "the loaded world has the same nations");
+        } finally {
+            Files.deleteIfExists(file);
+        }
+        // Scenario text: own nation and owner changes (what the map editor writes).
+        mapgame.sim.Scenario custom = mapgame.sim.Scenario.parseForTest("t", "start 1920\nnewcountry Atlantis 8844AA\nowner 5 Atlantis\n");
+        Game c = Game.create(MapKind.RANDOM, 42, custom);
+        check(c.world.countries.stream().anyMatch(x -> x.name.equals("Atlantis") && x.alive) || !c.world.provinces.get(5).isLand(),
+                "scenarios can add nations and change owners");
     }
 
     private static void fogOfWar() {
