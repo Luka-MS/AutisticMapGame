@@ -35,6 +35,7 @@ public final class SelfTest {
         run("group reinforcement", SelfTest::reinforcement);
         run("front planner", SelfTest::frontPlanner);
         run("army types and experience", SelfTest::armyTypes);
+        run("morale and generals", SelfTest::moraleAndGenerals);
         run("fog of war", SelfTest::fogOfWar);
         run("buildings and unrest", SelfTest::buildingsAndUnrest);
         run("research", SelfTest::research);
@@ -347,6 +348,31 @@ public final class SelfTest {
             p.load(r);
         }
         return p;
+    }
+
+    private static void moraleAndGenerals() {
+        Game g = newGame();
+        Province[] b = border(g);
+        Country a = b[0].owner, o = b[1].owner;
+        g.player = a;
+        g.armies.clear();
+        g.declareWar(a, o);
+        Army weak = army(g, a, b[0], 1500), strong = army(g, o, b[0], 4000);
+        g.tickDay();
+        check(weak.morale < 100, "morale falls in battle");
+        check(strong.morale > weak.morale, "the army taking heavier losses loses more morale");
+
+        g.armies.clear();
+        Army rest = army(g, a, b[0], 1000);
+        rest.morale = 50;
+        for (int i = 0; i < 10; i++) g.tickDay();
+        check(rest.morale > 70, "resting armies recover morale (" + (int) rest.morale + ")");
+
+        Army raw = new Army(1, a, b[0], 1000), vet = new Army(1, a, b[0], 1000);
+        vet.experience = 60;
+        check(raw.general() == null && vet.general() != null && vet.generalSkill() == 2, "veteran armies get a general");
+        raw.morale = 20;
+        check(raw.attackBonus() < vet.attackBonus(), "shaken and green armies hit weaker");
     }
 
     private static void fogOfWar() {

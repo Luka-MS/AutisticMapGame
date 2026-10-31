@@ -32,8 +32,8 @@ import mapgame.model.TechField;
 public final class SaveFile {
     public static final String EXTENSION = ".sav";
     private static final int MAGIC = 0x4D47534D;
-    /** Format version; each feature added fields (2 conquest day ... 10 policies, 11 events). Older versions load too. */
-    private static final int VERSION = 11;
+    /** Format version; each feature added fields (2 conquest day ... 11 events, 12 morale). Older versions load too. */
+    private static final int VERSION = 12;
 
     private SaveFile() {
     }
@@ -128,6 +128,7 @@ public final class SaveFile {
             out.writeInt(a.daysHere);
             out.writeInt(a.type.ordinal());
             out.writeDouble(a.experience);
+            out.writeDouble(a.morale);
             out.writeInt(a.path.size());
             for (Province p : a.path) out.writeInt(p.id);
         }
@@ -253,6 +254,9 @@ public final class SaveFile {
             if (version >= 6) {
                 a.type = ArmyType.values()[in.readInt()];
                 a.experience = in.readDouble();
+            }
+            if (version >= 12) {
+                a.morale = in.readDouble();
             }
             int pathLength = in.readInt();
             for (int k = 0; k < pathLength; k++) a.path.add(g.world.provinces.get(in.readInt()));

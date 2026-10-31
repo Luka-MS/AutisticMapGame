@@ -498,6 +498,7 @@ public final class Game {
         a.strength -= half;
         Army n = new Army(nextArmyId++, a.owner, a.location, half, a.type);
         n.experience = a.experience;
+        n.morale = a.morale;
         armies.add(n);
         if (a.group != null) assignToGroup(a.group, n);
         return n;
@@ -877,6 +878,7 @@ public final class Game {
         Map<Province, List<Army>> byProvince = new LinkedHashMap<>();
         for (Army a : armies) if (!a.dead) byProvince.computeIfAbsent(a.location, k -> new ArrayList<>()).add(a);
         List<Army> broken = new ArrayList<>();
+        Set<Army> fought = new HashSet<>();
         for (Map.Entry<Province, List<Army>> e : byProvince.entrySet()) {
             List<Army> list = e.getValue();
             if (list.size() < 2) continue;
@@ -899,10 +901,20 @@ public final class Game {
             for (int i = 0; i < list.size(); i++) {
                 if (dmg[i] <= 0) continue;
                 Army a = list.get(i);
+                int before = a.strength;
                 a.strength -= Math.max(1, (int) dmg[i]);
                 a.experience = Math.min(Army.MAX_EXPERIENCE, a.experience + EXPERIENCE_PER_BATTLE_DAY);
-                if (a.strength < 100) broken.add(a);
+                // Morale suffers with the share of the army lost; a good general keeps the men together.
+                double shock = Math.min(15, 150.0 * (before - a.strength) / Math.max(1, before)) * (1 - 0.1 * a.generalSkill());
+                a.morale = Math.max(0, a.morale - shock);
+                fought.add(a);
+                if (a.strength < 100 || a.morale <= Army.BREAK_MORALE) broken.add(a);
             }
+        }
+        for (Army a : armies) {
+            if (a.dead || fought.contains(a) || a.morale >= 100) continue;
+            double rest = a.location.controller == a.owner ? 3 : 1.5;
+            a.morale = Math.min(100, a.morale + rest + 0.25 * a.generalSkill());
         }
         for (Army a : broken) retreat(a);
     }
@@ -929,6 +941,7 @@ public final class Game {
             if (playerInvolved) report(I18n.tr("army.routed", a.location.name), a.location, a.owner);
             a.moveTo(best);
             a.clearPath();
+            a.morale = Math.max(a.morale, Army.BREAK_MORALE + 15);
         }
     }
 

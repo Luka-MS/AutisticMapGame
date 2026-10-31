@@ -82,6 +82,7 @@ The divider between the control menu and the log on the right can be dragged up 
 
 - Recruiting costs gold and 1,000 manpower and creates an army in an owned province. Pick the **unit type** in the drop-down above the recruit button: *infantry* (40 gold), *cavalry* (60 gold, 1.5x speed, +25% attack on plains and desert, -20% in forest and mountains, takes 20% more damage, 1.3x upkeep) or *artillery* (80 gold, half-speed, +50% attack, takes 30% more damage unless infantry stands in the same province, 1.6x upkeep). Non-infantry counters on the map carry a letter (`C`, `A`).
 - Armies gain **experience** while fighting (shown in the info panel): veterans deal up to 40% more damage and take up to 25% less. Reinforcements dilute the experience, merging averages it. Only armies of the same type merge.
+- **Morale** (0-100) falls with the losses in battle and weakens the attack; an army whose morale drops to 20 breaks and retreats. Resting armies recover, faster in own territory. Armies with 25+ experience get a named **general** (skill 1-4) who adds 5% attack per skill and reduces morale loss.
 - Armies have upkeep; if gold runs out, they slowly lose men.
 - Your own armies never merge automatically, so you can split an army (**X**) and spread the parts over several provinces. Use **C** to merge them again.
 - A manual move order takes an army out of its army group.
