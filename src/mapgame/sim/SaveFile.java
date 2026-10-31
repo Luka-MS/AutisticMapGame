@@ -22,6 +22,7 @@ import mapgame.model.Building;
 import mapgame.model.Country;
 import mapgame.model.MapKind;
 import mapgame.model.Province;
+import mapgame.model.Policy;
 import mapgame.model.TechField;
 
 /**
@@ -31,8 +32,8 @@ import mapgame.model.TechField;
 public final class SaveFile {
     public static final String EXTENSION = ".sav";
     private static final int MAGIC = 0x4D47534D;
-    /** Format version; each feature added fields (2 conquest day ... 8 buildings, 9 research). Older versions load too. */
-    private static final int VERSION = 9;
+    /** Format version; each feature added fields (2 conquest day ... 9 research, 10 policies). Older versions load too. */
+    private static final int VERSION = 10;
 
     private SaveFile() {
     }
@@ -85,6 +86,9 @@ public final class SaveFile {
             for (int lvl : c.tech) out.writeByte(lvl);
             out.writeInt(c.researching == null ? -1 : c.researching.ordinal());
             out.writeDouble(c.researchProgress);
+            out.writeInt(c.taxes.ordinal());
+            out.writeInt(c.conscription.ordinal());
+            out.writeInt(c.policyChangedDay);
             out.writeInt(c.capital == null ? -1 : c.capital.id);
             out.writeInt(c.provinces.size());
             for (Province p : c.provinces) out.writeInt(p.id);
@@ -182,6 +186,11 @@ public final class SaveFile {
                 int field = in.readInt();
                 c.researching = field < 0 ? null : TechField.values()[field];
                 c.researchProgress = in.readDouble();
+            }
+            if (version >= 10) {
+                c.taxes = Policy.Taxes.values()[in.readInt()];
+                c.conscription = Policy.Conscription.values()[in.readInt()];
+                c.policyChangedDay = in.readInt();
             }
             if (version >= 3) {
                 int capital = in.readInt();

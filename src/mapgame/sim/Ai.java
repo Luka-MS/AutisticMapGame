@@ -9,6 +9,7 @@ import mapgame.model.Army;
 import mapgame.model.ArmyType;
 import mapgame.model.Building;
 import mapgame.model.Country;
+import mapgame.model.Policy;
 import mapgame.model.Province;
 import mapgame.model.Terrain;
 
@@ -22,6 +23,7 @@ final class Ai {
         makePeace(g, c);
         if (!c.alive) return;
         diplomacy(g, c);
+        policies(g, c);
         build(g, c);
         joinCoalition(g, c);
         List<Country> foes = g.enemiesOf(c);
@@ -33,6 +35,19 @@ final class Ai {
     /** A nation in debt cannot pay its soldiers: it sends some of them home until the budget is balanced. */
     private static void controlDebt(Game g, Country c) {
         if (g.monthlyUpkeep(c) > g.monthlyIncome(c)) g.demobilize(c, 0.10);
+    }
+
+    /** Taxes up when broke, conscription up when the army cannot be filled during a war. */
+    private static void policies(Game g, Country c) {
+        if (g.day % 30 != 0) return;
+        boolean atWar = !g.enemiesOf(c).isEmpty();
+        Policy.Taxes taxes = c.taxes;
+        Policy.Conscription draft = c.conscription;
+        if (c.gold < 0) taxes = Policy.Taxes.HIGH;
+        else if (c.gold > 400) taxes = Policy.Taxes.NORMAL;
+        if (atWar && c.manpower < 3000) draft = Policy.Conscription.HEAVY;
+        else if (!atWar && c.manpower > 6000) draft = Policy.Conscription.NORMAL;
+        g.setPolicies(c, taxes, draft);
     }
 
     /** Once a month a nation with spare gold develops its richest province, or fortifies a border province at war. */

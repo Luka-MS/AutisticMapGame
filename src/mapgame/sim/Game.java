@@ -22,6 +22,7 @@ import mapgame.model.Building;
 import mapgame.model.Country;
 import mapgame.model.MapGenerator;
 import mapgame.model.MapKind;
+import mapgame.model.Policy;
 import mapgame.model.Province;
 import mapgame.model.RealMapGenerator;
 import mapgame.model.TechField;
@@ -378,7 +379,7 @@ public final class Game {
     public double monthlyIncome(Country c) {
         double inc = 0;
         for (Province p : c.provinces) if (p.controller == c) inc += p.income(day);
-        return inc * (1 + 0.08 * c.techLevel(TechField.ECONOMY));
+        return inc * (1 + 0.08 * c.techLevel(TechField.ECONOMY)) * c.taxes.gold * c.conscription.gold;
     }
 
     public double monthlyUpkeep(Country c) {
@@ -390,7 +391,22 @@ public final class Game {
     public int monthlyManpower(Country c) {
         int mp = 0;
         for (Province p : c.provinces) if (p.controller == c) mp += p.manpowerGain(day);
-        return (int) (mp * (1 + 0.1 * c.techLevel(TechField.ADMIN)));
+        return (int) (mp * (1 + 0.1 * c.techLevel(TechField.ADMIN)) * c.taxes.manpower * c.conscription.manpower);
+    }
+
+    /** Days until the nation may change its policies again (0 = now). */
+    public int policyCooldown(Country c) {
+        return Math.max(0, c.policyChangedDay + Policy.CHANGE_DELAY - day);
+    }
+
+    /** Changes the policies unless they were changed recently; unchanged values never start the cooldown. */
+    public boolean setPolicies(Country c, Policy.Taxes taxes, Policy.Conscription conscription) {
+        if (taxes == c.taxes && conscription == c.conscription) return true;
+        if (policyCooldown(c) > 0) return false;
+        c.taxes = taxes;
+        c.conscription = conscription;
+        c.policyChangedDay = day;
+        return true;
     }
 
     // ---------------------------------------------------------------- research

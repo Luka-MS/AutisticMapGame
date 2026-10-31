@@ -38,6 +38,7 @@ public final class SelfTest {
         run("fog of war", SelfTest::fogOfWar);
         run("buildings and unrest", SelfTest::buildingsAndUnrest);
         run("research", SelfTest::research);
+        run("policies", SelfTest::policies);
         run("save and load", SelfTest::saveLoad);
         System.out.printf("%d checks, %d failed%n", checks, failures);
         System.exit(failures == 0 ? 0 : 1);
@@ -293,6 +294,19 @@ public final class SelfTest {
         boolean aiResearches = false;
         for (Country c : g.world.countries) if (c != me && (c.researching != null || c.techLevel(mapgame.model.TechField.ECONOMY) > 0)) aiResearches = true;
         check(aiResearches, "AI nations research by themselves");
+    }
+
+    private static void policies() {
+        Game g = newGame();
+        Country me = g.world.countries.get(0);
+        g.player = me;
+        double income = g.monthlyIncome(me);
+        int manpower = g.monthlyManpower(me);
+        check(g.setPolicies(me, mapgame.model.Policy.Taxes.HIGH, mapgame.model.Policy.Conscription.NORMAL), "policies can be changed");
+        check(g.monthlyIncome(me) > income && g.monthlyManpower(me) < manpower, "high taxes bring gold but cost manpower");
+        check(!g.setPolicies(me, mapgame.model.Policy.Taxes.LOW, mapgame.model.Policy.Conscription.NORMAL), "policies cannot be changed again right away");
+        for (int i = 0; i < mapgame.model.Policy.CHANGE_DELAY; i++) g.tickDay();
+        check(g.setPolicies(me, mapgame.model.Policy.Taxes.LOW, mapgame.model.Policy.Conscription.HEAVY), "policies can be changed after the delay");
     }
 
     private static void fogOfWar() {

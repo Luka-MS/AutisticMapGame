@@ -106,6 +106,7 @@ Press **N** (or *Nation management*) to open the nation window. It collects ever
 
 - **Buildings:** select one of your provinces and build a *market* (+20% gold per level), *barracks* (+20% manpower), *fort* (defenders take 15% less damage) or *roads* (armies cross 15% faster). Construction takes 60 days and costs more with every level.
 - **Unrest:** a province held by an enemy without a garrison gains unrest; at 100 the people rise up and the province returns to its owner. Keep an army in conquered provinces.
+- **Policies:** *taxes* (low: -20% gold, +10% manpower; high: +25% gold, -15% manpower) and *conscription* (light: -30% manpower; heavy: +40% manpower, -10% gold). A change is possible every 180 days.
 - **Research:** pick one of three fields - *military* (+6% damage dealt, -4% damage taken per level), *economy* (+8% gold) or *administration* (+10% manpower, -4% army upkeep, faster research). Five levels each; the cost grows with every level (12, 24, 36, 48, 60 points) and large nations earn more points per month.
 
 ### Wars and total war

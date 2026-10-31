@@ -23,6 +23,10 @@ public final class Country {
     /** Field currently being researched (null = idle) and its progress in research points. */
     public TechField researching;
     public double researchProgress;
+    public Policy.Taxes taxes = Policy.Taxes.NORMAL;
+    public Policy.Conscription conscription = Policy.Conscription.NORMAL;
+    /** Day the policies were last changed. */
+    public int policyChangedDay = -Policy.CHANGE_DELAY;
 
     public int techLevel(TechField f) {
         return tech[f.ordinal()];

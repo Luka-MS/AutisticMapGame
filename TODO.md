@@ -33,7 +33,7 @@ Ideas and planned work for Map Game. Tick items off (`[x]`) as they are done.
 - [x] **Buildings and provinces:** markets, barracks, forts and roads (up to 3 / 3 / 3 / 2 levels, 60 days each, built in the Nation window). Occupied provinces without a garrison build up unrest and rebel against the occupier after about 250 days; a garrison keeps the peace. The AI develops its richest provinces and fortifies the front.
 - [x] **Technology / research:** three fields (military, economy, administration) with five levels each, researched in the Nation window; bigger nations research faster. The AI researches by itself (military first at war).
 - [ ] **Events and decisions:** random events, civil wars, revolutions, treaties.
-- [ ] **Government and policies:** conscription levels, war economy, taxes.
+- [x] **Government and policies:** taxes (low / normal / high) and conscription (light / normal / heavy) trade gold against manpower; policies can be changed every 180 days (Nation window). The AI raises taxes when broke and drafts heavily when short of men at war.
 
 ## Gameplay and polish
 

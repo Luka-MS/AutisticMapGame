@@ -24,6 +24,7 @@ public final class NationDialog extends JDialog {
         add(tabs);
         addPage(new BuildingsTab());
         addPage(new ResearchTab());
+        addPage(new PolicyTab());
         setPreferredSize(new Dimension(420, 460));
         pack();
         I18n.addListener(this::applyLanguage);
