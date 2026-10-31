@@ -20,6 +20,7 @@ import mapgame.model.ArmyGroup;
 import mapgame.model.ArmyType;
 import mapgame.model.Building;
 import mapgame.model.Country;
+import mapgame.model.Fleet;
 import mapgame.model.MapGenerator;
 import mapgame.model.MapKind;
 import mapgame.model.Policy;
@@ -55,13 +56,17 @@ public final class Game {
     public Difficulty difficulty = Difficulty.NORMAL;
     public int aggression = 50;
     /** Statistics for the balance tools; not part of a save. */
-    public int warsDeclared, totalWarsDeclared, peaceDeals, eliminations, coalitionWars, alliancesFormed;
+    public int warsDeclared, totalWarsDeclared, peaceDeals, eliminations, coalitionWars, alliancesFormed, landings;
 
     final Map<Long, Integer> wars = new HashMap<>();
     final Set<Long> totalWars = new HashSet<>();
     public final List<ArmyGroup> groups = new ArrayList<>();
+    public final List<Fleet> fleets = new ArrayList<>();
+    /** Coastal provinces currently blockaded by an enemy fleet (recomputed every day, not saved). */
+    final Set<Province> blockaded = new HashSet<>();
     int nextGroupId = 1;
     int nextArmyId = 1;
+    int nextFleetId = 1;
 
     public Game(long seed) {
         this(MapGenerator.generate(seed), seed, MapKind.RANDOM, null);
@@ -547,22 +552,41 @@ public final class Game {
         return s;
     }
 
+    public List<Fleet> fleetsOf(Country c) {
+        List<Fleet> out = new ArrayList<>();
+        for (Fleet f : fleets) if (!f.dead && f.owner == c) out.add(f);
+        return out;
+    }
+
+    public long navalStrength(Country c) {
+        long s = 0;
+        for (Fleet f : fleets) if (!f.dead && f.owner == c) s += f.strength;
+        return s;
+    }
+
+    public boolean isBlockaded(Province p) {
+        return blockaded.contains(p);
+    }
+
     public boolean isEngaged(Army a) {
+        if (a.fleet != null) return false;
         for (Army o : armies) {
-            if (o != a && !o.dead && o.location == a.location && atWar(a.owner, o.owner)) return true;
+            if (o != a && !o.dead && o.fleet == null && o.location == a.location && atWar(a.owner, o.owner)) return true;
         }
         return false;
     }
 
     public Map<Province, Integer> enemyStrengthByProvince(Country c) {
         Map<Province, Integer> m = new HashMap<>();
-        for (Army a : armies) if (atWar(c, a.owner)) m.merge(a.location, a.strength, Integer::sum);
+        for (Army a : armies) if (a.fleet == null && atWar(c, a.owner)) m.merge(a.location, a.strength, Integer::sum);
         return m;
     }
 
     public double monthlyIncome(Country c) {
         double inc = 0;
-        for (Province p : c.provinces) if (p.controller == c) inc += p.income(day);
+        for (Province p : c.provinces) {
+            if (p.controller == c) inc += p.income(day) * (blockaded.contains(p) ? 1 - Navy.BLOCKADE_LOSS : 1);
+        }
         double bonus = (day < c.incomeBonusUntil ? 1 + c.incomeBonus : 1) * (1 + 0.06 * tradesOf(c));
         double skill = c == player ? difficulty.player : difficulty.ai;
         return inc * (1 + 0.08 * c.techLevel(TechField.ECONOMY)) * c.taxes.gold * c.conscription.gold * bonus * skill;
@@ -571,6 +595,7 @@ public final class Game {
     public double monthlyUpkeep(Country c) {
         double u = 0;
         for (Army a : armies) if (a.owner == c) u += a.strength * UPKEEP_PER_MAN * a.type.upkeepFactor;
+        for (Fleet f : fleets) if (!f.dead && f.owner == c) u += f.strength * UPKEEP_PER_MAN * Navy.UPKEEP_FACTOR;
         return u * (1 - 0.04 * c.techLevel(TechField.ADMIN));
     }
 
@@ -666,7 +691,7 @@ public final class Game {
     }
 
     public boolean canSplit(Army a) {
-        return a != null && !a.dead && a.progress == 0 && a.strength >= MIN_SPLIT;
+        return a != null && !a.dead && a.fleet == null && a.progress == 0 && a.strength >= MIN_SPLIT;
     }
 
     /** Splits off half of the army into a new army in the same province; returns it or null. */
@@ -706,7 +731,8 @@ public final class Game {
     }
 
     private static boolean isMergeable(Army a, Army o) {
-        return o != a && !o.dead && o.owner == a.owner && o.type == a.type && o.location == a.location && o.path.isEmpty();
+        return o != a && !o.dead && a.fleet == null && o.fleet == null && o.owner == a.owner && o.type == a.type
+                && o.location == a.location && o.path.isEmpty();
     }
 
     // ---------------------------------------------------------------- army groups
@@ -810,7 +836,7 @@ public final class Game {
 
     /** Manual order from the player; takes the army out of its army group. */
     public boolean orderMove(Army a, Province dest) {
-        if (a == null || a.dead || dest == null || !dest.isLand()) return false;
+        if (a == null || a.dead || a.fleet != null || dest == null || !dest.isLand()) return false;
         if (!moveArmy(a, dest)) return false;
         if (a.group != null) {
             log(I18n.tr("army.removed", a.owner.displayName(), a.group.displayName()));
@@ -820,6 +846,7 @@ public final class Game {
     }
 
     boolean moveArmy(Army a, Province dest) {
+        if (a.fleet != null) return false;
         if (dest == a.location) {
             a.clearPath();
             return true;
@@ -930,6 +957,9 @@ public final class Game {
         for (Army a : armies) {
             if (!a.dead && friendly(c, a.owner)) reveal(a.location, a.type == ArmyType.CAVALRY ? 2 : 1, vis);
         }
+        for (Fleet f : fleets) {
+            if (!f.dead && friendly(c, f.owner)) reveal(f.location, 2, vis);
+        }
         return vis;
     }
 
@@ -993,7 +1023,7 @@ public final class Game {
 
     private void applyAttrition() {
         for (Army a : armies) {
-            if (a.dead) continue;
+            if (a.dead || a.fleet != null) continue;
             int loss = (int) Math.round(a.strength * attritionRate(a));
             if (loss <= 0) continue;
             a.strength -= loss;
@@ -1009,6 +1039,7 @@ public final class Game {
     public void tickDay() {
         day++;
         moveArmies();
+        Navy.tick(this);
         resolveCombat();
         mergeArmies();
         resolveOccupation();
@@ -1031,7 +1062,7 @@ public final class Game {
 
     private void moveArmies() {
         for (Army a : armies) {
-            if (a.dead) continue;
+            if (a.dead || a.fleet != null) continue;
             a.daysHere++;
             if (a.path.isEmpty()) {
                 a.progress = 0;
@@ -1054,7 +1085,7 @@ public final class Game {
 
     private void resolveCombat() {
         Map<Province, List<Army>> byProvince = new LinkedHashMap<>();
-        for (Army a : armies) if (!a.dead) byProvince.computeIfAbsent(a.location, k -> new ArrayList<>()).add(a);
+        for (Army a : armies) if (!a.dead && a.fleet == null) byProvince.computeIfAbsent(a.location, k -> new ArrayList<>()).add(a);
         List<Army> broken = new ArrayList<>();
         Set<Army> fought = new HashSet<>();
         for (Map.Entry<Province, List<Army>> e : byProvince.entrySet()) {
@@ -1124,7 +1155,7 @@ public final class Game {
     }
 
     private boolean hostileArmyAt(Country c, Province p) {
-        for (Army o : armies) if (!o.dead && o.location == p && atWar(c, o.owner)) return true;
+        for (Army o : armies) if (!o.dead && o.fleet == null && o.location == p && atWar(c, o.owner)) return true;
         return false;
     }
 
@@ -1132,7 +1163,7 @@ public final class Game {
         Map<Long, Army> stacks = new HashMap<>();
         for (Army a : armies) {
             // The player's armies only merge on request so they can be split across provinces.
-            if (a.dead || !a.path.isEmpty() || a.owner == player) continue;
+            if (a.dead || a.fleet != null || !a.path.isEmpty() || a.owner == player) continue;
             long k = ((long) a.location.id << 32) | ((long) a.owner.id << 4) | a.type.ordinal();
             Army host = stacks.get(k);
             if (host == null) {
@@ -1147,7 +1178,7 @@ public final class Game {
 
     private void resolveOccupation() {
         for (Army a : armies) {
-            if (a.dead) continue;
+            if (a.dead || a.fleet != null) continue;
             Province p = a.location;
             if (p.owner == null || p.controller == a.owner || !atWar(a.owner, p.controller)) continue;
             if (a.daysHere < OCCUPY_DAYS || hostileArmyAt(a.owner, p)) continue;
@@ -1176,6 +1207,7 @@ public final class Game {
         c.alive = false;
         eliminations++;
         for (Army a : armies) if (a.owner == c) a.dead = true;
+        for (Fleet f : fleets) if (f.owner == c) f.dead = true;
         wars.keySet().removeIf(k -> (k >> 32) == c.id || (k & 0xFFFFFFFFL) == c.id);
         totalWars.removeIf(k -> (k >> 32) == c.id || (k & 0xFFFFFFFFL) == c.id);
         alliances.removeIf(k -> (k >> 32) == c.id || (k & 0xFFFFFFFFL) == c.id);
@@ -1195,7 +1227,7 @@ public final class Game {
     /** After peace, armies standing on land they may no longer enter are sent home. */
     private void evictArmies() {
         for (Army a : armies) {
-            if (a.dead || allowed(a.owner, a.location)) continue;
+            if (a.dead || a.fleet != null || allowed(a.owner, a.location)) continue;
             Country owner = a.owner;
             List<Province> home = findPath(owner, a.location, p -> p.owner == owner && p.controller == owner);
             if (home != null && !home.isEmpty()) {

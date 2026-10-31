@@ -20,6 +20,7 @@ import mapgame.model.ArmyGroup;
 import mapgame.model.ArmyType;
 import mapgame.model.Building;
 import mapgame.model.Country;
+import mapgame.model.Fleet;
 import mapgame.model.MapKind;
 import mapgame.model.Province;
 import mapgame.model.Policy;
@@ -32,8 +33,8 @@ import mapgame.model.TechField;
 public final class SaveFile {
     public static final String EXTENSION = ".sav";
     private static final int MAGIC = 0x4D47534D;
-    /** Format version; each feature added fields (2 conquest day ... 14 difficulty, 15 scenario). Older versions load too. */
-    private static final int VERSION = 15;
+    /** Format version; each feature added fields (2 conquest day ... 15 scenario, 16 fleets). Older versions load too. */
+    private static final int VERSION = 16;
 
     private SaveFile() {
     }
@@ -169,6 +170,24 @@ public final class SaveFile {
             }
             out.writeInt(grp.front.size());
             for (Province p : grp.front) out.writeInt(p.id);
+        }
+
+        List<Fleet> fleets = g.fleets.stream().filter(f -> !f.dead).toList();
+        out.writeInt(g.nextFleetId);
+        out.writeInt(fleets.size());
+        for (Fleet f : fleets) {
+            out.writeInt(f.id);
+            out.writeInt(f.owner.id);
+            out.writeInt(f.location.id);
+            out.writeInt(f.strength);
+            out.writeDouble(f.progress);
+            out.writeInt(f.daysHere);
+            out.writeInt(f.path.size());
+            for (Province p : f.path) out.writeInt(p.id);
+            out.writeInt(f.target == null ? -1 : f.target.id);
+            List<Army> cargo = f.cargo.stream().filter(a -> !a.dead).toList();
+            out.writeInt(cargo.size());
+            for (Army a : cargo) out.writeInt(a.id);
         }
     }
 
@@ -330,6 +349,32 @@ public final class SaveFile {
             int front = in.readInt();
             for (int k = 0; k < front; k++) grp.front.add(g.world.provinces.get(in.readInt()));
             g.groups.add(grp);
+        }
+
+        g.fleets.clear();
+        if (version >= 16) {
+            g.nextFleetId = in.readInt();
+            int fleets = in.readInt();
+            for (int i = 0; i < fleets; i++) {
+                int id = in.readInt();
+                Country owner = g.world.countries.get(in.readInt());
+                Province location = g.world.provinces.get(in.readInt());
+                Fleet f = new Fleet(id, owner, location, in.readInt());
+                f.progress = in.readDouble();
+                f.daysHere = in.readInt();
+                int steps = in.readInt();
+                for (int k = 0; k < steps; k++) f.path.add(g.world.provinces.get(in.readInt()));
+                int target = in.readInt();
+                f.target = target < 0 ? null : g.world.provinces.get(target);
+                int cargo = in.readInt();
+                for (int k = 0; k < cargo; k++) {
+                    Army a = byId.get(in.readInt());
+                    if (a == null) continue;
+                    a.fleet = f;
+                    f.cargo.add(a);
+                }
+                g.fleets.add(f);
+            }
         }
 
         g.world.recomputeLabels();

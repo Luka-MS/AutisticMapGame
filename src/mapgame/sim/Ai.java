@@ -28,6 +28,7 @@ final class Ai {
         joinCoalition(g, c);
         List<Country> foes = g.enemiesOf(c);
         if (!foes.isEmpty()) attack(g, c);
+        Navy.ai(g, c);
         recruit(g, c, !foes.isEmpty());
         if (foes.isEmpty()) maybeDeclareWar(g, c);
     }
@@ -155,7 +156,7 @@ final class Ai {
     private static void attack(Game g, Country c) {
         Map<Province, Integer> enemyAt = g.enemyStrengthByProvince(c);
         for (Army a : g.armiesOf(c)) {
-            if (a.dead || !a.path.isEmpty() || g.isEngaged(a)) continue;
+            if (a.dead || a.fleet != null || !a.path.isEmpty() || g.isEngaged(a)) continue;
             int str = a.strength;
             List<Province> path = g.findPath(c, a.location, p -> {
                 if (p.owner != null && g.atWar(c, p.owner) && p.controller != c) return true;
@@ -163,6 +164,7 @@ final class Ai {
                 return e != null && str >= e * 1.2;
             });
             if (path != null) a.setPath(path);
+            else if (g.fleetsOf(c).size() > 0) Navy.requestTransport(g, c, a);
         }
     }
 

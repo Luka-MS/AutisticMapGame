@@ -17,6 +17,8 @@ public final class Army {
     public boolean dead;
     /** Army group this army belongs to, or null if it is under manual control. */
     public ArmyGroup group;
+    /** The fleet this army is aboard, or null. Embarked armies take no part in land warfare. */
+    public Fleet fleet;
     public ArmyType type = ArmyType.INFANTRY;
     /** Battle experience, 0 - {@link #MAX_EXPERIENCE}: veterans hit harder and take less damage. */
     public double experience;

@@ -52,10 +52,12 @@ import mapgame.model.Army;
 import mapgame.model.ArmyType;
 import mapgame.model.Building;
 import mapgame.model.Country;
+import mapgame.model.Fleet;
 import mapgame.model.MapKind;
 import mapgame.model.Province;
 import mapgame.sim.Difficulty;
 import mapgame.sim.Game;
+import mapgame.sim.Navy;
 import mapgame.sim.SaveFile;
 import mapgame.sim.Scenario;
 
@@ -67,6 +69,7 @@ public final class GameWindow extends JFrame {
     private final JLabel dateLabel = new JLabel();
     private final JTextArea status = textArea(5), info = textArea(8), logArea = new JTextArea();
     private final JButton startBtn = button(), pickBtn = button(), recruitBtn = button(), splitBtn = button(), mergeBtn = button(),
+            fleetBtn = button(), embarkBtn = button(), unloadBtn = button(),
             groupsBtn = button(), warBtn = button(), totalWarBtn = button(), peaceBtn = button(), allianceBtn = button(), nationBtn = button(),
             menuBtn = button(), saveBtn = button(), loadBtn = button(), modeBtn = button(), fogBtn = button();
     private final List<JToggleButton> speedBtns = new ArrayList<>();
@@ -166,6 +169,9 @@ public final class GameWindow extends JFrame {
         typeBox.addActionListener(e -> refresh());
         splitBtn.addActionListener(e -> splitSelected());
         mergeBtn.addActionListener(e -> mergeSelected());
+        fleetBtn.addActionListener(e -> buildFleet());
+        embarkBtn.addActionListener(e -> embarkSelected());
+        unloadBtn.addActionListener(e -> unloadSelected());
         warBtn.addActionListener(e -> {
             Province p = map.selectedProvince();
             if (p != null && p.owner != null) game.declareWar(game.player, p.owner);
@@ -388,6 +394,44 @@ public final class GameWindow extends JFrame {
         return started && a != null && !a.dead && a.owner == game.player;
     }
 
+    private void buildFleet() {
+        Province p = map.selectedProvince();
+        if (!started || p == null) return;
+        Fleet f = Navy.recruit(game, game.player, p);
+        if (f == null) game.log(I18n.tr("fleet.cannot.build"));
+        else map.selectFleet(f);
+        refresh();
+    }
+
+    /** Fleet selected: load the armies waiting in its port. Armies selected: board a fleet lying in the same port. */
+    private void embarkSelected() {
+        if (!started) return;
+        Fleet f = map.selectedFleet();
+        int n = 0;
+        if (f != null && f.owner == game.player) {
+            n = Navy.embarkAll(game, f);
+        } else {
+            for (Army a : map.selectedArmies()) {
+                if (!playerArmy(a)) continue;
+                for (Fleet x : game.fleetsOf(game.player)) {
+                    if (x.inPort() && x.location == a.location && Navy.embark(game, a, x)) {
+                        n++;
+                        break;
+                    }
+                }
+            }
+        }
+        if (n == 0) game.log(I18n.tr("fleet.cannot.embark"));
+        refresh();
+    }
+
+    private void unloadSelected() {
+        Fleet f = map.selectedFleet();
+        if (!started || f == null || f.owner != game.player) return;
+        if (Navy.disembark(game, f, f.location) == 0) game.log(I18n.tr("fleet.cannot.unload"));
+        refresh();
+    }
+
     private void splitSelected() {
         Army a = map.selectedArmy();
         if (!playerArmy(a)) return;
@@ -438,7 +482,7 @@ public final class GameWindow extends JFrame {
 
         JPanel buttons = new JPanel();
         buttons.setLayout(new BoxLayout(buttons, BoxLayout.Y_AXIS));
-        for (JComponent b : new JComponent[] {startBtn, pickBtn, typeBox, recruitBtn, splitBtn, mergeBtn, groupsBtn, nationBtn, warBtn, totalWarBtn, peaceBtn, allianceBtn}) buttons.add(left(b));
+        for (JComponent b : new JComponent[] {startBtn, pickBtn, typeBox, recruitBtn, splitBtn, mergeBtn, fleetBtn, embarkBtn, unloadBtn, groupsBtn, nationBtn, warBtn, totalWarBtn, peaceBtn, allianceBtn}) buttons.add(left(b));
 
         JPanel top = new WidthTrackingPanel(new BorderLayout(0, 6));
         top.setBorder(BorderFactory.createEmptyBorder(8, 8, 4, 8));
@@ -501,6 +545,8 @@ public final class GameWindow extends JFrame {
         bind("M", this::toggleMode);
         bind("F", this::toggleFog);
         bind("X", this::splitSelected);
+        bind("E", this::embarkSelected);
+        bind("U", this::unloadSelected);
         bind("C", this::mergeSelected);
         bind("G", this::showGroups);
         bind("N", () -> showNation(null));
@@ -559,6 +605,9 @@ public final class GameWindow extends JFrame {
         recruitBtn.setText(I18n.tr("btn.recruit", Game.RECRUIT_GOLD, Game.RECRUIT_MEN));
         splitBtn.setText(I18n.tr("btn.split"));
         mergeBtn.setText(I18n.tr("btn.merge"));
+        fleetBtn.setText(I18n.tr("btn.fleet", Navy.FLEET_GOLD, Navy.FLEET_MEN));
+        embarkBtn.setText(I18n.tr("btn.embark"));
+        unloadBtn.setText(I18n.tr("btn.unload"));
         groupsBtn.setText(I18n.tr("btn.groups"));
         nationBtn.setText(I18n.tr("btn.nation"));
         menuBtn.setText(I18n.tr("btn.menu"));
@@ -702,6 +751,11 @@ public final class GameWindow extends JFrame {
         boolean mine = playerArmy(sa);
         splitBtn.setEnabled(mine && game.canSplit(sa));
         mergeBtn.setEnabled(mine && game.mergeCandidates(sa) > 0);
+        Fleet sf = map.selectedFleet();
+        boolean myFleet = playing && sf != null && !sf.dead && sf.owner == me;
+        fleetBtn.setEnabled(own && sel != null && Navy.isPort(sel) && me.gold >= Navy.FLEET_GOLD && me.manpower >= Navy.FLEET_MEN);
+        embarkBtn.setEnabled(myFleet && sf.inPort() || mine && sa.fleet == null);
+        unloadBtn.setEnabled(myFleet && sf.inPort() && !sf.cargo.isEmpty());
         boolean atWarWithSel = foreign && game.atWar(me, sel.owner);
         boolean alliedWithSel = foreign && game.allied(me, sel.owner);
         warBtn.setEnabled(foreign && !atWarWithSel && !alliedWithSel && !game.hasPact(me, sel.owner));
@@ -725,7 +779,11 @@ public final class GameWindow extends JFrame {
         if (p == null) return I18n.tr("info.none");
         StringBuilder sb = new StringBuilder();
         sb.append(I18n.tr("info.name", p.name, p.terrain.label())).append('\n');
-        if (!p.isLand()) return sb.append(I18n.tr("info.sea")).toString();
+        if (!p.isLand()) {
+            sb.append(I18n.tr("info.sea"));
+            appendFleet(sb);
+            return sb.toString();
+        }
         sb.append(I18n.tr("info.population", p.population, p.income(game.day))).append('\n');
         if (p.city != null) sb.append(I18n.tr("info.city", p.city, p.cityPopulation)).append('\n');
         if (p.isCapital()) sb.append(I18n.tr("info.capital", p.owner.displayName())).append('\n');
@@ -733,6 +791,8 @@ public final class GameWindow extends JFrame {
         if (p.owner != null && p.controller != p.owner) sb.append(I18n.tr("info.occupied", p.controller.displayName())).append('\n');
         if (!p.ferryTo.isEmpty()) sb.append(I18n.tr("info.ferry", Province.FERRY_DAYS)).append('\n');
         sb.append(I18n.tr("info.travel", p.terrain.moveDays)).append('\n');
+        if (game.isBlockaded(p)) sb.append(I18n.tr("info.blockaded")).append('\n');
+        if (Navy.isPort(p)) sb.append(I18n.tr("info.port")).append('\n');
         StringBuilder built = new StringBuilder();
         for (Building b : Building.values()) {
             if (p.level(b) > 0) built.append(built.length() > 0 ? ", " : "").append(b.label()).append(' ').append(p.level(b));
@@ -777,7 +837,23 @@ public final class GameWindow extends JFrame {
             }
             if (a.group != null) sb.append('\n').append(I18n.tr("info.group", a.group.displayName()));
         }
+        appendFleet(sb);
         return sb.toString();
+    }
+
+    private void appendFleet(StringBuilder sb) {
+        Fleet f = map.selectedFleet();
+        if (f == null || f.dead) return;
+        String where = f.inPort() ? I18n.tr("fleet.inport", f.location.name) : I18n.tr("fleet.sea");
+        sb.append("\n\n").append(I18n.tr("info.fleet", f.owner.displayName(), f.strength, where));
+        sb.append('\n').append(I18n.tr("info.fleet.cargo", f.cargoMen(), f.capacity()));
+        if (!f.path.isEmpty()) sb.append('\n').append(I18n.tr("fleet.sailing", lastOf(f).name));
+    }
+
+    private static Province lastOf(Fleet f) {
+        Province last = null;
+        for (Province p : f.path) last = p;
+        return last;
     }
 
     private static Province lastOf(Army a) {

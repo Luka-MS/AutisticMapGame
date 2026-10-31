@@ -23,7 +23,7 @@ public final class BalanceCheck {
             double[] alive = new double[marks.length], top = new double[marks.length], top3 = new double[marks.length];
             double[] changed = new double[marks.length], rump = new double[marks.length], strong = new double[marks.length];
             double[] indebted = new double[marks.length];
-            long wars = 0, totalWars = 0, coalitions = 0, alliances = 0, peaces = 0, eliminated = 0;
+            long wars = 0, totalWars = 0, coalitions = 0, alliances = 0, peaces = 0, eliminated = 0, landings = 0, fleets = 0;
             int startCountries = 0;
             for (int s = 1; s <= seeds; s++) {
                 Game g = Game.create(kind, 1000 + s);
@@ -65,6 +65,8 @@ public final class BalanceCheck {
                 totalWars += g.totalWarsDeclared;
                 coalitions += g.coalitionWars;
                 alliances += g.alliancesFormed;
+                landings += g.landings;
+                fleets += g.fleets.size();
                 peaces += g.peaceDeals;
                 eliminated += g.eliminations;
             }
@@ -73,8 +75,9 @@ public final class BalanceCheck {
                 System.out.printf("  year %2d: %5.1f alive, %4.1f with <=2 provinces, %4.1f keep >=60%% of start size, %4.1f in debt | biggest %4.1f%%, top 3 %4.1f%% | %4.1f%% of land changed owner%n",
                         marks[i], alive[i] / seeds, rump[i] / seeds, strong[i] / seeds, indebted[i] / seeds, top[i] / seeds, top3[i] / seeds, changed[i] / seeds);
             }
-            System.out.printf("  per seed: %d wars (%d total, %d coalition), %d alliances, %d peace deals, %.1f eliminations%n",
-                    wars / seeds, totalWars / seeds, coalitions / seeds, alliances / seeds, peaces / seeds, (double) eliminated / seeds);
+            System.out.printf("  per seed: %d wars (%d total, %d coalition), %d alliances, %d peace deals, %.1f eliminations, %d naval landings, %d fleets at the end%n",
+                    wars / seeds, totalWars / seeds, coalitions / seeds, alliances / seeds, peaces / seeds, (double) eliminated / seeds,
+                    landings / seeds, fleets / seeds);
         }
     }
 }

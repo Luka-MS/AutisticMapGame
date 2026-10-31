@@ -44,6 +44,7 @@ public final class SelfTest {
         run("difficulty", SelfTest::difficulty);
         run("scenarios", SelfTest::scenarios);
         run("mods", SelfTest::mods);
+        run("navy", SelfTest::navy);
         run("events and decisions", SelfTest::events);
         run("language files", SelfTest::languages);
         run("save and load", SelfTest::saveLoad);
@@ -499,6 +500,81 @@ public final class SelfTest {
             if (!existed) Files.deleteIfExists(Path.of("mods"));
         }
         check(mapgame.sim.Scenario.find("selftest_mod") == null, "removed mods are gone again");
+    }
+
+    private static void navy() {
+        Game g = newGame();
+        g.armies.clear();
+        // A nation with a port, and an enemy with a port that touches the same sea.
+        Province port = null, sea = null;
+        for (Province p : g.world.provinces) {
+            if (!mapgame.sim.Navy.isPort(p) || p.owner == null) continue;
+            for (Province q : p.neighbors) if (!q.isLand()) {
+                port = p;
+                sea = q;
+            }
+            if (port != null) break;
+        }
+        check(port != null, "the map has a port");
+        if (port == null) return;
+        Country a = port.owner;
+        g.player = a;
+        a.gold = 1000;
+        a.manpower = 5000;
+        mapgame.model.Fleet f = mapgame.sim.Navy.recruit(g, a, port);
+        check(f != null && f.inPort() && a.gold == 1000 - mapgame.sim.Navy.FLEET_GOLD, "a fleet can be built in a port");
+        check(mapgame.sim.Navy.recruit(g, a, sea) == null, "no fleets are built at sea");
+        double upkeep = g.monthlyUpkeep(a);
+        check(upkeep > 0, "fleets cost upkeep");
+
+        check(mapgame.sim.Navy.orderMove(g, f, sea), "a fleet can sail to the sea next to its port");
+        for (int i = 0; i < 4; i++) g.tickDay();
+        check(f.location == sea, "the fleet arrives");
+
+        // Transport: load an army in port, sail, land again.
+        mapgame.sim.Navy.orderMove(g, f, port);
+        for (int i = 0; i < 4; i++) g.tickDay();
+        check(f.location == port, "the fleet returns to port");
+        Army army = army(g, a, port, 1500);
+        check(mapgame.sim.Navy.embark(g, army, f), "an army can embark in port");
+        check(!mapgame.sim.Navy.embark(g, army(g, a, port, 3000), f), "a fleet only carries what fits (" + f.capacity() + " men)");
+        mapgame.sim.Navy.orderMove(g, f, sea);
+        for (int i = 0; i < 4; i++) g.tickDay();
+        check(army.location == sea && army.fleet == f, "the army travels with the fleet");
+        check(g.orderMove(army, port) == false, "an embarked army takes no land orders");
+        check(mapgame.sim.Navy.disembark(g, f, port) == 1 && army.fleet == null && army.location == port, "the army lands in the port");
+
+        // Fleet battle and sinking with cargo.
+        Country b = null;
+        for (Country c : g.world.countries) if (c != a && c.alive) b = c;
+        g.declareWar(a, b);
+        mapgame.model.Fleet strong = f;
+        strong.strength = 900;
+        mapgame.sim.Navy.orderMove(g, strong, sea);
+        for (int i = 0; i < 4; i++) g.tickDay();
+        mapgame.model.Fleet weak = new mapgame.model.Fleet(900_000, b, sea, 300);
+        g.fleets.add(weak);
+        Army cargo = army(g, b, sea, 500);
+        cargo.fleet = weak;
+        weak.cargo.add(cargo);
+        for (int i = 0; i < 12 && !weak.dead; i++) g.tickDay();
+        check(weak.dead && !strong.dead, "the stronger fleet wins the battle");
+        check(cargo.dead, "the cargo of a sunk fleet is lost");
+
+        // Blockade of an enemy coast.
+        Province coast = null;
+        Country enemy = null;
+        for (Province p : sea.neighbors) if (p.isLand() && p.coastal && p.owner != null && p.owner != a) {
+            coast = p;
+            enemy = p.owner;
+        }
+        if (coast != null) {
+            g.declareWar(a, enemy);
+            double before = g.monthlyIncome(enemy);
+            g.tickDay();
+            check(g.isBlockaded(coast), "an enemy fleet blockades the adjacent coast");
+            check(g.monthlyIncome(enemy) < before, "a blockade cuts the income");
+        }
     }
 
     private static void fogOfWar() {

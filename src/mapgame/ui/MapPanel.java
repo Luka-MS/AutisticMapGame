@@ -10,6 +10,7 @@ import java.awt.FontMetrics;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Image;
+import java.awt.Polygon;
 import java.awt.Rectangle;
 import java.awt.RenderingHints;
 import java.awt.Shape;
@@ -34,8 +35,10 @@ import mapgame.model.Army;
 import mapgame.model.ArmyGroup;
 import mapgame.model.ArmyType;
 import mapgame.model.Country;
+import mapgame.model.Fleet;
 import mapgame.model.Province;
 import mapgame.sim.Game;
+import mapgame.sim.Navy;
 
 /** Pannable, zoomable map view with province/army selection and move orders. */
 public final class MapPanel extends JPanel {
@@ -50,6 +53,9 @@ public final class MapPanel extends JPanel {
     private record ArmyBox(Army army, Rectangle rect) {
     }
 
+    private record FleetBox(Fleet fleet, Rectangle rect) {
+    }
+
     private static final Color SEA = new Color(0x1B3A57);
 
     private Game game;
@@ -62,6 +68,8 @@ public final class MapPanel extends JPanel {
     private ArmyGroup shownGroup;
     private Runnable selectionListener = () -> { };
     private final List<ArmyBox> boxes = new ArrayList<>();
+    private final List<FleetBox> fleetBoxes = new ArrayList<>();
+    private Fleet selectedFleet;
     private final Highlight selectionHl = new Highlight(0x66FFFFFF), hoverHl = new Highlight(0x30FFFFFF);
 
     private int pressX, pressY, lastX, lastY;
@@ -190,6 +198,20 @@ public final class MapPanel extends JPanel {
         return selectedArmy;
     }
 
+    public Fleet selectedFleet() {
+        return selectedFleet;
+    }
+
+    public void selectFleet(Fleet f) {
+        selectedFleet = f;
+        if (f != null) {
+            selected = f.location;
+            setArmySelection(null);
+        }
+        selectionListener.run();
+        repaint();
+    }
+
     /** All selected armies; the first one is {@link #selectedArmy()}. */
     public List<Army> selectedArmies() {
         return new ArrayList<>(armySel);
@@ -218,6 +240,7 @@ public final class MapPanel extends JPanel {
 
     public void clearSelection() {
         selected = null;
+        selectedFleet = null;
         setArmySelection(null);
         selectionListener.run();
         repaint();
@@ -255,6 +278,10 @@ public final class MapPanel extends JPanel {
         }
         if (armySel.removeIf(a -> a.dead)) {
             selectedArmy = armySel.isEmpty() ? null : armySel.iterator().next();
+            selectionListener.run();
+        }
+        if (selectedFleet != null && selectedFleet.dead) {
+            selectedFleet = null;
             selectionListener.run();
         }
         updateFog();
@@ -324,6 +351,14 @@ public final class MapPanel extends JPanel {
     // ---------------------------------------------------------------- input
 
     private void click(int sx, int sy) {
+        for (int i = fleetBoxes.size() - 1; i >= 0; i--) {
+            FleetBox b = fleetBoxes.get(i);
+            if (b.rect.contains(sx, sy)) {
+                selectFleet(b.fleet);
+                return;
+            }
+        }
+        selectedFleet = null;
         for (int i = boxes.size() - 1; i >= 0; i--) {
             ArmyBox b = boxes.get(i);
             if (b.rect.contains(sx, sy)) {
@@ -338,7 +373,7 @@ public final class MapPanel extends JPanel {
         setArmySelection(null);
         if (selected != null && game.player != null) {
             for (Army a : game.armies) {
-                if (a.owner == game.player && a.location == selected && !a.dead) {
+                if (a.owner == game.player && a.location == selected && !a.dead && a.fleet == null) {
                     setArmySelection(List.of(a));
                     break;
                 }
@@ -362,7 +397,25 @@ public final class MapPanel extends JPanel {
         repaint();
     }
 
+    /** Right-click with a fleet selected: land the cargo on the coast, or sail to a sea / friendly port. */
+    private void orderFleet(int sx, int sy) {
+        Province dest = provinceAt(sx, sy);
+        Fleet f = selectedFleet;
+        if (dest == null || f == null) return;
+        if (dest.isLand() && !f.cargo.isEmpty() && (dest == f.location || f.location.neighbors.contains(dest))) {
+            if (Navy.disembark(game, f, dest) == 0) game.log(I18n.tr("fleet.cannot.land", dest.name));
+        } else if (!Navy.orderMove(game, f, dest)) {
+            game.log(I18n.tr("fleet.cannot.reach", dest.name));
+        }
+        selectionListener.run();
+        repaint();
+    }
+
     private void order(int sx, int sy) {
+        if (selectedFleet != null && selectedFleet.owner == game.player) {
+            orderFleet(sx, sy);
+            return;
+        }
         if (selectedArmy == null || selectedArmy.owner != game.player) return;
         Province dest = provinceAt(sx, sy);
         if (dest == null) return;
@@ -400,6 +453,7 @@ public final class MapPanel extends JPanel {
         drawGroupFront(g);
         drawArmyPath(g);
         drawArmies(g);
+        drawFleets(g);
         drawMinimap(g);
         if (boxing) {
             int x = Math.min(pressX, lastX), y = Math.min(pressY, lastY);
@@ -606,6 +660,57 @@ public final class MapPanel extends JPanel {
         g.fillOval((int) px - 4, (int) py - 4, 8, 8);
     }
 
+    /** Fleets are drawn as ship-shaped counters below the armies: owner colour, strength and the men on board. */
+    private void drawFleets(Graphics2D g) {
+        fleetBoxes.clear();
+        double s = Math.max(0.8, Math.min(1.4, zoom));
+        int w = (int) (56 * s), h = (int) (20 * s);
+        g.setFont(getFont().deriveFont(Font.BOLD, (float) (11 * s)));
+        FontMetrics fm = g.getFontMetrics();
+        Map<Integer, Integer> stacks = new HashMap<>();
+        for (Fleet f : game.fleets) {
+            if (f.dead || !(visible == null || visible[f.location.id] || game.friendly(game.player, f.owner))) continue;
+            double x = f.location.x, y = f.location.y;
+            Province next = f.path.peek();
+            if (next != null && f.progress > 0) {
+                double t = Math.min(1, f.progress / (next.isLand() ? 1 : 2));
+                x += (next.x - x) * t;
+                y += (next.y - y) * t;
+            }
+            int sx = (int) (x * zoom + offX) - w / 2, sy = (int) (y * zoom + offY) + 4;
+            if (f.progress == 0) sy += (h + 2) * (stacks.merge(f.location.id, 1, Integer::sum) - 1);
+            if (sx > getWidth() || sy > getHeight() || sx + w < 0 || sy + h < 0) continue;
+            Rectangle r = new Rectangle(sx, sy, w, h);
+            fleetBoxes.add(new FleetBox(f, r));
+            Polygon hull = new Polygon(new int[] {r.x, r.x + r.width, r.x + r.width - h / 2, r.x + h / 2},
+                    new int[] {r.y, r.y, r.y + r.height, r.y + r.height}, 4);
+            g.setColor(new Color(f.owner.rgb));
+            g.fillPolygon(hull);
+            boolean sel = f == selectedFleet;
+            g.setColor(sel ? Color.YELLOW : new Color(10, 30, 60));
+            g.setStroke(new BasicStroke(sel ? 2.5f : 1.4f));
+            g.drawPolygon(hull);
+            g.setStroke(new BasicStroke(1f));
+            String text = formatStrength(f.strength) + (f.cargo.isEmpty() ? "" : " +" + formatStrength(f.cargoMen()));
+            int lum = (((f.owner.rgb >> 16) & 0xFF) * 3 + ((f.owner.rgb >> 8) & 0xFF) * 6 + (f.owner.rgb & 0xFF)) / 10;
+            g.setColor(lum > 140 ? Color.BLACK : Color.WHITE);
+            g.drawString(text, r.x + (w - fm.stringWidth(text)) / 2, r.y + (h + fm.getAscent()) / 2 - 2);
+        }
+        if (selectedFleet != null && !selectedFleet.path.isEmpty()) {
+            g.setColor(new Color(120, 220, 255, 230));
+            g.setStroke(new BasicStroke(2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 1f, new float[] {6f, 5f}, 0f));
+            double px = selectedFleet.location.x * zoom + offX, py = selectedFleet.location.y * zoom + offY;
+            for (Province p : selectedFleet.path) {
+                double nx = p.x * zoom + offX, ny = p.y * zoom + offY;
+                g.drawLine((int) px, (int) py, (int) nx, (int) ny);
+                px = nx;
+                py = ny;
+            }
+            g.fillOval((int) px - 4, (int) py - 4, 8, 8);
+            g.setStroke(new BasicStroke(1f));
+        }
+    }
+
     private void drawArmies(Graphics2D g) {
         boxes.clear();
         double s = Math.max(0.8, Math.min(1.4, zoom));
@@ -616,7 +721,7 @@ public final class MapPanel extends JPanel {
         FontMetrics fm = g.getFontMetrics();
         Map<Integer, Integer> stacks = new HashMap<>();
         for (Army a : game.armies) {
-            if (a.dead || !seen(a)) continue;
+            if (a.dead || a.fleet != null || !seen(a)) continue;
             double[] pos = armyPos(a);
             int sx = (int) (pos[0] * zoom + offX) - w / 2, sy = (int) (pos[1] * zoom + offY) - h / 2;
             if (a.progress == 0) sy -= (h + 2) * stacks.merge(a.location.id, 1, Integer::sum) - (h + 2);

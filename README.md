@@ -20,7 +20,8 @@ Pick a nation, raise armies, declare wars and conquer the map - on a randomly ge
 - **AI nations** that recruit, attack, make peace and declare wars. They fight for limited war goals, occasionally launch a total war on a far weaker neighbour, band together in a coalition against a nation that holds more than 20% of the land, and demobilize when in debt. Conquered provinces yield only half for a year.
 - **Alliances:** propose an alliance (the other side agrees against a common enemy or an over-mighty nation, or when you are the stronger partner), up to three allies. Allied armies may cross and are supplied in each other's land, nobody can declare war on an ally, and when a member is attacked its allies are called to arms - AI allies mostly join, you get a notification and decide yourself. Break an alliance at any time.
 - **Supply and attrition:** armies outside your own land lose men - nothing right behind the border, then more with the distance from your territory, in deserts, mountains and snow, in huge stacks (over 4,000 men) and in winter. The info panel shows the supply state of the selected army.
-- **Sea crossings:** islands are linked to the mainland over narrow straits (e.g. UK-France, Japan-Korea) as long as there is no navy.
+- **Sea crossings:** islands are linked to the mainland over narrow straits (e.g. UK-France, Japan-Korea) as a cheap shortcut; for everything else there is the navy (see below).
+- **Navy:** build a fleet in one of your coastal provinces and sail it with right-click. Fleets fight enemy fleets at sea, blockade enemy coasts (a blockaded province loses half of its income while no defending fleet is there) and carry armies: a fleet carries 4 men per point of strength, so a fresh fleet (strength 500) transports one standard army of 2,000 men. See *Navy and sea transport* below.
 
 ## Getting started
 
@@ -69,6 +70,8 @@ Pushing a tag like `v1.0.0` triggers [`.github/workflows/release.yml`](.github/w
 | M | Toggle political / terrain map |
 | F | Toggle fog of war (foreign armies are only visible near your land and your armies) |
 | X | Split the selected army in half (the new army gets selected) |
+| E | Embark: load armies onto the fleet in the same port |
+| U | Unload the selected fleet's cargo in port |
 | C | Merge idle friendly armies in the same province into the selected one |
 | G | Open the army group window |
 | N | Open the nation window (buildings and more) |
@@ -115,6 +118,16 @@ Press **N** (or *Nation management*) to open the nation window. It collects ever
 ### Random events
 
 Every month each nation has a small chance of an event: *bumper harvest*, *plague*, *peasant revolt*, *trade treaty* (+10% gold for five years), *army reform*, *natural disaster* and *coup attempt* (when bankrupt). When it hits you, a dialog asks for your decision and the game waits; the AI decides by itself. What matters to you also shows up in the Events tab.
+
+### Navy and sea transport
+
+1. Select one of your coastal provinces (info panel: *Port*) and press *Build fleet in port* (100 gold, 500 manpower). Fleets cost double upkeep.
+2. Click a fleet counter (ship-shaped, below the armies) and **right-click** a sea province or a friendly port to sail there.
+3. **Embark** (**E**): with a fleet in port selected, all idle armies waiting in that port board it (big armies are split to fit); or select armies in a port and press E to board a fleet lying there. Boarded armies travel with the fleet and cannot fight.
+4. **Land:** with the fleet selected at sea, right-click a coastal land province next to it - the whole cargo lands there, also in enemy territory (the armies then have to fight for it). In port press **U** (*Unload*).
+5. Fleets in the same sea province fight each other. A sunk fleet takes its cargo down. An enemy fleet next to your coast blockades it unless you have a fleet there too.
+
+The AI builds fleets, hunts and blockades, and ferries armies to islands and coasts it cannot reach by land.
 
 ### Wars and total war
 
