@@ -550,10 +550,13 @@ public final class SelfTest {
         Province adjacentLand = null;
         for (Province p : port.neighbors) if (p.isLand() && p != port && g.allowed(a, p)) adjacentLand = p;
         if (adjacentLand != null) {
-            check(mapgame.sim.Navy.embark(g, army, f), "an army can re-embark in port");
-            check(mapgame.sim.Navy.disembark(g, f, adjacentLand) == 0 && army.fleet == f,
+            mapgame.model.Fleet docked = new mapgame.model.Fleet(900_001, a, port, 500);
+            Army dockedCargo = army(g, a, port, 1000);
+            dockedCargo.fleet = docked;
+            docked.cargo.add(dockedCargo);
+            check(mapgame.sim.Navy.disembark(g, docked, adjacentLand) == 0 && dockedCargo.fleet == docked,
                     "a fleet in port cannot unload into another land province");
-            check(mapgame.sim.Navy.disembark(g, f, port) == 1, "a fleet in port can unload at its own port");
+            check(mapgame.sim.Navy.disembark(g, docked, port) == 1, "a fleet in port can unload at its own port");
         }
 
         // Fleet battle and sinking with cargo.
@@ -627,7 +630,9 @@ public final class SelfTest {
 
         String text = ed.export("Editor test", 1920);
         check(text.contains("seed 42") && text.contains("newcountry Atlantis 8844AA") && text.contains("owner " + land.id + " Atlantis"), "the export lists the changes");
-        check(text.contains("rename " + oldName + " = Renamed Land") && text.contains("provname " + land.id + " Port Atlantis"), "the export lists renames");
+        check(text.contains("rename " + oldName + " = __map_editor_tmp_") && text.contains(" = Renamed Land\n")
+                        && text.contains("provname " + land.id + " Port Atlantis"),
+                "the export lists collision-safe renames");
 
         mapgame.sim.Scenario sc = mapgame.sim.Scenario.parseForTest("editor_test", text);
         check(sc.seed != null && sc.seed == 42 && sc.startYear == 1920, "the exported scenario can be read back");
