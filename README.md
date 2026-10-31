@@ -7,6 +7,7 @@ Pick a nation, raise armies, declare wars and conquer the map - on a randomly ge
 
 - **Three worlds** chosen from a main menu: a procedurally generated random world, Europe, and the whole world with all of its real nations.
 - **Real maps** built from [Natural Earth](https://www.naturalearthdata.com/) data: real countries, borders and coastlines, terrain derived from real mountain ranges, deserts and tundra, and province population derived from real country populations (scaled for gameplay).
+- **Real regions:** Germany is split along its federal states (Bayern, Hessen, ...) and Russia along its oblasts, krais and republics. Their provinces carry the real names. A German state may hold several provinces on the big maps, while every Russian region is exactly one province (which keeps Russia from swamping the map with hundreds of provinces). The city states Berlin, Hamburg and Bremen (and similarly tiny regions) are merged into their surrounding region because they are too small to be provinces. More countries can be added in `SUBDIVIDE` in `tools/prepare_data.py` (`split` or `whole`).
 - **Province-based map** with up to ~2,000 provinces, a political and a terrain map mode, pan and zoom.
 - **Real-time calendar** starting in 1900 with pause and five game speeds.
 - **Economy:** population produces gold and manpower every month; armies cost upkeep.
@@ -15,9 +16,24 @@ Pick a nation, raise armies, declare wars and conquer the map - on a randomly ge
 - **Diplomacy:** declare war, propose peace (decided by war score), post-war truces, and **total war** that can never end in peace.
 - **Balanced peace deals:** in a normal war the winner takes at most 35% of the loser's provinces and nobody loses their last province; a nation without any land left capitulates. Only a total war can wipe a nation out. This keeps the AI world dynamic without snowballing or mass extinction.
 - **Save / load** with quick save (F5), quick load (F9), a file dialog, a yearly autosave and a *Load game* button in the main menu.
+- **Sound and music:** no sound files are needed: effects for war, peace, good and bad news and an ambient music loop are generated in code (`mapgame.audio`). Switch with the *Sound* button or **O**; the music is off by default.
 - **Languages:** English, German, Serbo-Croatian in Croatian wording (Latin and Cyrillic script) and Russian, switchable in the main menu at any time. The choice is remembered. Texts live in `res/mapgame/lang/*.properties`; the Cyrillic Serbo-Croatian texts are generated from `sh.properties` (text in `{braces}` stays Latin). Names of the real countries (Europe and World maps) are translated via `res/mapgame/lang/countries.tsv`; invented nations and province names stay as generated.
-- **AI nations** that recruit, attack, make peace and declare wars.
-- **Sea crossings:** islands are linked to the mainland over narrow straits (e.g. UK-France, Japan-Korea) as long as there is no navy.
+- **Real capitals and cities:** every real nation starts with its real capital and the big cities of the Natural Earth data are on the map. City provinces yield more gold and manpower (+30%, megacities +60%), capitals +50%. A nation that loses its capital in a peace deal moves it to its richest province.
+- **AI nations** that recruit, attack, make peace and declare wars. They fight for limited war goals, occasionally launch a total war on a far weaker neighbour, band together in a coalition against a nation that holds more than 20% of the land, and demobilize when in debt. Conquered provinces yield only half for a year.
+- **Alliances:** propose an alliance (the other side agrees against a common enemy or an over-mighty nation, or when you are the stronger partner), up to three allies. Allied armies may cross and are supplied in each other's land, nobody can declare war on an ally, and when a member is attacked its allies are called to arms - AI allies mostly join, you get a notification and decide yourself. Break an alliance at any time.
+- **Supply and attrition:** armies outside your own land lose men - nothing right behind the border, then more with the distance from your territory, in deserts, mountains and snow, in huge stacks (over 4,000 men) and in winter. The info panel shows the supply state of the selected army.
+- **Sea crossings:** islands are linked to the mainland over narrow straits (e.g. UK-France, Japan-Korea) as a cheap shortcut; for everything else there is the navy (see below).
+- **Navy:** build a fleet in one of your coastal provinces and sail it with right-click. Fleets fight enemy fleets at sea, blockade enemy coasts (a blockaded province loses half of its income while no defending fleet is there) and carry armies: a fleet carries 4 men per point of strength, so a fresh fleet (strength 500) transports one standard army of 2,000 men. See *Navy and sea transport* below.
+
+## Screenshots
+
+| Political map (Europe 1914 scenario, battle marker in the middle) | Terrain map with rivers |
+|---|---|
+| ![Political map](docs/screenshots/europe-political.png) | ![Terrain map](docs/screenshots/europe-terrain.png) |
+
+![The whole world](docs/screenshots/world.png)
+
+(Rendered by `java -cp out\classes mapgame.tools.Screenshots docs\screenshots`.)
 
 ## Getting started
 
@@ -40,7 +56,20 @@ To compile manually: `javac -d out\classes (Get-ChildItem src -Recurse -Filter *
 
 This builds the project, packs it into a runnable jar, then uses `jpackage` (bundled with the JDK) to produce a self-contained app image with its own private Java runtime under `out\dist\AutisticMapGame-Version-1.0.0\`, and zips it as `out\dist\AutisticMapGame-Version-1.0.0-win-x64.zip`. Players don't need Java installed to run the resulting `.exe`.
 
-Pushing a tag like `v1.0.0` triggers [`.github/workflows/release.yml`](.github/workflows/release.yml), which runs the same packaging step on GitHub Actions and attaches the zip to the corresponding GitHub Release automatically.
+Pushing a tag like `v1.0.0` triggers [`.github/workflows/release.yml`](.github/workflows/release.yml), which runs the same packaging step on GitHub Actions and attaches the zip to a **draft** GitHub Release. Review the draft and publish it manually.
+
+**Versioning** (`MAJOR.MINOR.PATCH`): bump MAJOR when old saves or mods stop working (for example the map data or save format changes), MINOR for new features that keep saves and mods working, and PATCH for bug fixes only.
+
+### Building a standalone macOS app (`.app`)
+
+On a Mac with JDK 17 or newer, run:
+
+```bash
+chmod +x package-macos.sh
+./package-macos.sh 1.0.0
+```
+
+This creates `out/dist/AutisticMapGame-Version-1.0.0.app`, including a private Java runtime, and `out/dist/AutisticMapGame-Version-1.0.0-mac.zip` for distribution. Players can unzip the archive and move the app to Applications; they do not need Java installed. The app is currently unsigned, so macOS may require the player to Control-click the app and choose **Open** the first time. A tagged release also produces this macOS zip automatically.
 
 ### Building a standalone macOS app (`.app`)
 
@@ -55,8 +84,8 @@ This creates `out/dist/AutisticMapGame-Version-1.0.0.app`, including a private J
 
 ## How to play
 
-1. Choose a world in the main menu. *Random world* shows its preview first (use *Re-roll* for another one) and you play exactly that map.
-2. Click any coloured province to select a nation and press **Start**.
+1. Choose a world in the main menu. *Random world* shows its preview first (use *Re-roll* for another one) and you play exactly that map. Below the worlds you set the **difficulty** (easy: you earn 10% more and the AI 15% less; hard: the AI earns 20% more and you 5% less) and the **AI aggressiveness** (0 = the AI never starts wars on its own, 100 = very warlike).
+2. Click any coloured province to select a nation, or use *Choose nation from a list* for a sortable table with the key figures of every nation, and press **Start**.
 3. Press **Space** to unpause and use **1-5** to change the speed.
 4. Select an army (click its counter or a province) and **right-click** a province to march there.
 5. An army must stay for a few days in an enemy province to occupy it. Occupied provinces are drawn with stripes in the occupier's colour.
@@ -75,17 +104,25 @@ This creates `out/dist/AutisticMapGame-Version-1.0.0.app`, including a private J
 | Space | Pause / resume |
 | 1-5 | Game speed |
 | M | Toggle political / terrain map |
+| O | Sound: off / effects / effects + music |
+| F | Toggle fog of war (foreign armies are only visible near your land and your armies) |
 | X | Split the selected army in half (the new army gets selected) |
+| E | Embark: load armies onto the fleet in the same port |
+| U | Unload the selected fleet's cargo in port |
 | C | Merge idle friendly armies in the same province into the selected one |
 | G | Open the army group window |
+| N | Open the nation window (buildings and more) |
+| H / Home | Jump to your capital |
 | F5 / F9 | Quick save / quick load |
 | Esc | Deselect |
 
-The divider between the control menu and the log on the right can be dragged up and down to resize the log.
+The divider between the control menu and the log on the right can be dragged up and down to resize the log. The bottom-left **minimap** shows the whole world with your current view; click or drag on it to jump. Hovering a province shows a tooltip (owner, population, income, city, armies). The **Events** tab next to the log lists what matters to you (wars, peace, lost and conquered provinces, lost armies, eliminated nations); a click on an entry jumps to the place and the tab title counts new events.
 
 ### Armies
 
-- Recruiting costs 40 gold and 1,000 manpower and creates an army in an owned province.
+- Recruiting costs gold and 1,000 manpower and creates an army in an owned province. Pick the **unit type** in the drop-down above the recruit button: *infantry* (40 gold), *cavalry* (60 gold, 1.5x speed, +25% attack on plains and desert, -20% in forest and mountains, takes 20% more damage, 1.3x upkeep) or *artillery* (80 gold, half-speed, +50% attack, takes 30% more damage unless infantry stands in the same province, 1.6x upkeep). Non-infantry counters on the map carry a letter (`C`, `A`).
+- Armies gain **experience** while fighting (shown in the info panel): veterans deal up to 40% more damage and take up to 25% less. Reinforcements dilute the experience, merging averages it. Only armies of the same type merge.
+- **Morale** (0-100) falls with the losses in battle and weakens the attack; an army whose morale drops to 20 breaks and retreats. Resting armies recover, faster in own territory. Armies with 25+ experience get a named **general** (skill 1-4) who adds 5% attack per skill and reduces morale loss.
 - Armies have upkeep; if gold runs out, they slowly lose men.
 - Your own armies never merge automatically, so you can split an army (**X**) and spread the parts over several provinces. Use **C** to merge them again.
 - A manual move order takes an army out of its army group.
@@ -102,10 +139,72 @@ Open the window with **G**:
 
 Army counters of a group carry a `G<number>` tag. The selected group shows its front provinces as circles and the assignment of each army as dashed lines.
 
+**Automatic reinforcement:** tick *Reinforce automatically* and set a *target strength*. Whenever the group is below it, armies standing in your own territory are refilled from the manpower pool (500 men per planning round) and, if that is not enough, new armies are raised in the province closest to the front. The usual recruit prices apply (0.04 gold and 1 manpower per man) and 50 gold are always kept in reserve.
+
+### Nation management
+
+Press **N** (or *Nation management*) to open the nation window. It collects everything that is not about armies; more pages are listed below.
+
+- **Buildings:** select one of your provinces and build a *market* (+20% gold per level), *barracks* (+20% manpower), *fort* (defenders take 15% less damage) or *roads* (armies cross 15% faster). Construction takes 60 days and costs more with every level.
+- **Unrest:** a province held by an enemy without a garrison gains unrest; at 100 the people rise up and the province returns to its owner. Keep an army in conquered provinces.
+- **Policies:** *taxes* (low: -20% gold, +10% manpower; high: +25% gold, -15% manpower) and *conscription* (light: -30% manpower; heavy: +40% manpower, -10% gold). A change is possible every 180 days.
+- **Research:** pick one of three fields - *military* (+6% damage dealt, -4% damage taken per level), *economy* (+8% gold) or *administration* (+10% manpower, -4% army upkeep, faster research). Five levels each; the cost grows with every level (12, 24, 36, 48, 60 points) and large nations earn more points per month.
+
+- **Diplomacy** (select a province of the other nation, *Diplomacy* page): alliances (see above), *non-aggression pacts* (10 years, nobody can declare war meanwhile), *guarantees of independence* (one-sided; if the protégé is attacked the guarantor is called to arms), *trade agreements* (+6% gold for both, up to three, they end with a war). The **war goal** of your next declaration is chosen here: *conquest* (the usual land deal) or *tribute* (no land changes hands, the loser pays 30% of its gold).
+- **Statistics:** every month the game records provinces, population, army, navy, gold and income of every nation (saved with the game). The *Statistics* page draws them as line charts: pick a metric, select any nations in the list (or *Top 8* / *Only me*) and hover the chart to read exact values.
+### Random events
+
+Every month each nation has a small chance of an event: *bumper harvest*, *plague*, *peasant revolt*, *trade treaty* (+10% gold for five years), *army reform*, *natural disaster* and *coup attempt* (when bankrupt). When it hits you, a dialog asks for your decision and the game waits; the AI decides by itself. What matters to you also shows up in the Events tab.
+
+### Navy and sea transport
+
+1. Select one of your coastal provinces (info panel: *Port*) and press *Build fleet in port* (100 gold, 500 manpower). Fleets cost double upkeep.
+2. Click a fleet counter (ship-shaped, below the armies) and **right-click** a sea province or a friendly port to sail there.
+3. **Embark** (**E**): with a fleet in port selected, all idle armies waiting in that port board it (big armies are split to fit); or select armies in a port and press E to board a fleet lying there. Boarded armies travel with the fleet and cannot fight.
+4. **Land:** with the fleet selected at sea, right-click a coastal land province next to it - the whole cargo lands there, also in enemy territory (the armies then have to fight for it). In port press **U** (*Unload*).
+5. Fleets in the same sea province fight each other. A sunk fleet takes its cargo down. An enemy fleet next to your coast blockades it unless you have a fleet there too.
+
+The AI builds fleets, hunts and blockades, and ferries armies to islands and coasts it cannot reach by land.
+
+### Hotseat (2-4 players on one computer)
+
+Set *Players* to 2-4 in the main menu before starting a world. Each player in turn clicks a nation and presses **Start**. Then the game is turn based: the first player plans (orders, recruiting, diplomacy, ...) and presses **End turn** (**Enter**); a hand-over screen appears so the next player can take the keyboard without seeing the previous map; after the last player the world simulates 30 days, events that concern a human ask that human directly. Fog of war, the Events tab and all dialogs refer to the player whose turn it is. A player whose nation is eliminated drops out; the last nation standing wins. Saving works during planning and restores all players.
+
 ### Wars and total war
 
 - *Declare war* starts a normal war. Peace is accepted when the other side is not winning or when the war has dragged on for a long time. The winner takes at most 35% of the loser's provinces, and a nation can never lose its last province in a normal war.
 - *Declare TOTAL war* starts a war that can never end in peace - not by you and not by the AI. It only ends when one of the two nations is eliminated. An existing war can be escalated to total war. The game asks for confirmation first.
+
+### Scenarios
+
+On the Europe and World maps the menu offers a **scenario**: *Great Powers 1914* and *Europe 1936* change the start year and merge today's nations into the empires of the time (Austria-Hungary, Russian Empire, Ottoman Empire, German Empire, Soviet Union, Yugoslavia, Czechoslovakia) with their historical alliances. The map data is modern, so the borders are an approximation. A scenario is a text file in `res/mapgame/data/scenarios/` (listed in `index.txt`) or in `mods/scenarios/`:
+
+```
+name Great Powers 1914
+start 1914
+maps europe world
+merge Austria-Hungary = Austria, Hungary, Czechia      the first nation absorbs the others and is renamed
+rename Germany = German Empire
+newcountry Atlantis 8844AA                              a new nation (RGB colour)
+owner 123 Atlantis                                      province 123 now belongs to it
+alliance France, Russian Empire
+war Serbia, Austria-Hungary
+```
+
+### Map editor
+
+*Map editor* in the main menu opens an editor on a random, Europe or World map: select a nation in the list and click provinces to give them to it (switch *Click assigns province* off to just inspect), create new nations (name and colour), rename nations, change the name and population of a province, and finally *Save as scenario*. The scenario is written to `mods/scenarios/<id>.txt` and appears in the scenario list after the next start; for random worlds the seed is stored in the file so the province numbers stay valid. Extra scenario lines: `provname <id> <name>`, `population <id> <number>`, `seed <number>`.
+
+## Mods
+
+Create a folder `mods` next to the game (next to `saves`); `mods-example/` is a template you can copy. Everything is optional and read at start-up:
+
+| File | Purpose |
+|---|---|
+| `mods/scenarios/<id>.txt` | A scenario (format above). It appears in the scenario list; add a text `scenario.<id>=Name` to `mods/lang/en.properties` for a nicer name. |
+| `mods/lang/<language>.properties` | Extra or replaced texts (`en`, `de`, `ru`, `sh`). |
+| `mods/lang/countries.tsv` | Names of added nations: English, German, Serbo-Croatian, Russian (tab separated). |
+| `mods/data/world.txt` | Replaces the real-world geography completely (same format as `res/mapgame/data/world.txt`, see `tools/prepare_data.py`). Saves of other maps will not load while it is installed. |
 
 ## The worlds
 
@@ -123,13 +222,19 @@ On the real maps, terrain follows real geography, population follows the real po
 src/mapgame
   Main.java                       entry point
   model/                          world data and map generation
-    MapGenerator, RealMapGenerator, GeoData, MapKind, World, Province, Country, Army, ArmyGroup, Terrain
+    MapGenerator, RealMapGenerator, GeoData, MapKind, World, Province, Country, Army, ArmyType, ArmyGroup, Fleet,
+    Building, TechField, Policy, Terrain
   sim/                            game rules
-    Game, Ai, FrontPlanner, SaveFile
+    Game, Ai, FrontPlanner, Navy, GameEvents, Scenario, MapEditor, Difficulty, SaveFile
+  audio/                          generated sound effects and music (Synth, SoundManager)
+  i18n/                           texts and country names in four languages
   ui/                             Swing user interface
-    GameWindow, MainMenuPanel, MapPanel, MapRenderer, ArmyGroupDialog
-  tools/                          headless developer tools (SimCheck, BalanceCheck, SaveCheck)
-res/mapgame/data/world.txt        compact country and terrain geometry for the real maps
+    GameWindow, MainMenuPanel, MapPanel, MapRenderer, ArmyGroupDialog, NationDialog (+ tabs), NationPickerDialog, EditorPanel
+  tools/                          headless developer tools (SelfTest, SimCheck, BalanceCheck, SaveCheck, Screenshots)
+res/mapgame/data/world.txt        compact country, subdivision, terrain, river and city data for the real maps
+res/mapgame/data/scenarios/       bundled scenarios (1914, 1936)
+mods-example/                     template for a mods folder
+docs/screenshots/                 README screenshots
 tools/prepare_data.py             builds world.txt from Natural Earth GeoJSON
 build.ps1, run.ps1, package.ps1    Windows build, run, and release-packaging scripts
 run.sh, package-macos.sh            macOS/Linux runner and macOS app packager
@@ -140,6 +245,12 @@ assets/icon.ico                    Windows executable icon used by package.ps1
 ## Development
 
 All tools are headless and run from `out\classes` after `.\build.ps1`.
+
+**Unit tests.** `SelfTest` checks the simulation rules (pathfinding, combat, occupation, peace limits, alliances, supply, reinforcement, front planner, saving). The exit code is 1 when a check fails; GitHub Actions runs it for every pull request together with `SaveCheck`:
+
+```powershell
+java -cp out\classes mapgame.tools.SelfTest
+```
 
 **AI balance.** `BalanceCheck` lets the AI play a number of years on several seeds and prints survivors, how much land changes hands, the size of the biggest nations and debt:
 
@@ -161,7 +272,7 @@ java -cp out\classes mapgame.tools.SimCheck <seed> <years> <outDir> [random|euro
 java -cp out\classes mapgame.tools.SimCheck 12345 20 out\check europe
 ```
 
-**Map data.** `res/mapgame/data/world.txt` is generated from the 50m Natural Earth country and geography-region data. To rebuild it (requires Python 3 and an internet connection):
+**Map data.** `res/mapgame/data/world.txt` is generated from the 50m Natural Earth country and geography-region data plus the 10m first-level subdivisions (states/provinces) of the countries listed in `SUBDIVIDE`. To rebuild it (requires Python 3 and an internet connection; the 10m file is about 40 MB and cached in `tools/cache`):
 
 ```powershell
 python tools\prepare_data.py
@@ -169,7 +280,7 @@ python tools\prepare_data.py
 
 ## Roadmap
 
-Navy and sea transport, alliances, fog of war, technology, buildings, provinces with unrest, real capitals and cities, automatic reinforcement for army groups, sound.
+Navy and sea transport, buildings, technology, provinces with unrest, generals and morale, events and decisions, scenarios, difficulty settings, sound. See [TODO.md](TODO.md) for the full list.
 
 ## Credits and license
 

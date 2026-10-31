@@ -1,0 +1,5 @@
+# Example scenario: the Nordic countries united (copy the whole mods-example folder to "mods" next to the game).
+name Nordic Union
+start 1900
+maps europe world
+merge Nordic Union = Sweden, Norway, Denmark, Finland, Iceland

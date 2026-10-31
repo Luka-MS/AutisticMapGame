@@ -7,6 +7,9 @@ out/
 saves/
 *.sav
 
+# Player mods (see mods-example/ for a template)
+mods/
+
 # Source data downloaded by tools/prepare_data.py (res/mapgame/data/world.txt IS tracked)
 tools/cache/
 

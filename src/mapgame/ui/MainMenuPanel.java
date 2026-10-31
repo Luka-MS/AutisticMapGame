@@ -28,6 +28,7 @@ import javax.swing.JButton;
 import javax.swing.JComboBox;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
+import javax.swing.JSlider;
 import javax.swing.JTextArea;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
@@ -37,6 +38,8 @@ import mapgame.model.MapGenerator;
 import mapgame.model.MapKind;
 import mapgame.model.RealMapGenerator;
 import mapgame.model.World;
+import mapgame.sim.Difficulty;
+import mapgame.sim.Scenario;
 
 /** Start screen: pick a random world or a real map. */
 public final class MainMenuPanel extends JPanel {
@@ -46,6 +49,8 @@ public final class MainMenuPanel extends JPanel {
         void load();
 
         void resume();
+
+        void editor();
 
         void quit();
     }
@@ -61,9 +66,16 @@ public final class MainMenuPanel extends JPanel {
     private final Map<MapKind, JTextArea> descriptions = new EnumMap<>(MapKind.class);
     private final Map<MapKind, JButton> playButtons = new EnumMap<>(MapKind.class);
     private final Set<MapKind> previewFailed = EnumSet.noneOf(MapKind.class);
-    private final JButton resumeBtn = new JButton(), quitBtn = new JButton(), loadBtn = new JButton(), rerollBtn = new JButton();
+    private final JButton resumeBtn = new JButton(), quitBtn = new JButton(), loadBtn = new JButton(), rerollBtn = new JButton(), editorBtn = new JButton();
     private final JLabel subtitle = new JLabel("", SwingConstants.CENTER), languageLabel = new JLabel();
     private final JComboBox<Language> languageBox = new JComboBox<>(Language.values());
+    private final JComboBox<Difficulty> difficultyBox = new JComboBox<>(Difficulty.values());
+    private final JSlider aggressionSlider = new JSlider(0, 100, 50);
+    private final javax.swing.JSpinner playersSpinner = new javax.swing.JSpinner(new javax.swing.SpinnerNumberModel(1, 1, 4, 1));
+    private final JLabel playersLabel = new JLabel();
+    private final JComboBox<Scenario> scenarioBox = new JComboBox<>();
+    private final JLabel scenarioLabel = new JLabel();
+    private final JLabel difficultyLabel = new JLabel(), aggressionLabel = new JLabel(), aggressionValue = new JLabel();
     private boolean applyingLanguage;
     private final JLabel statusLabel = new JLabel(" ", SwingConstants.CENTER);
     private long randomSeed = System.nanoTime();
@@ -102,12 +114,61 @@ public final class MainMenuPanel extends JPanel {
         content.add(statusLabel);
         content.add(Box.createVerticalStrut(12));
 
+        difficultyBox.setFocusable(false);
+        difficultyBox.setSelectedItem(Difficulty.NORMAL);
+        difficultyBox.setRenderer(new javax.swing.DefaultListCellRenderer() {
+            @Override
+            public java.awt.Component getListCellRendererComponent(javax.swing.JList<?> l, Object v, int i, boolean s, boolean f) {
+                return super.getListCellRendererComponent(l, ((Difficulty) v).label(), i, s, f);
+            }
+        });
+        aggressionSlider.setOpaque(false);
+        aggressionSlider.setFocusable(false);
+        aggressionSlider.setPreferredSize(new Dimension(160, 24));
+        aggressionSlider.addChangeListener(e -> aggressionValue.setText(Integer.toString(aggressionSlider.getValue())));
+        for (JLabel l : new JLabel[] {difficultyLabel, aggressionLabel, aggressionValue}) l.setForeground(MUTED);
+        aggressionValue.setText("50");
+        JPanel settings = new JPanel(new FlowLayout(FlowLayout.CENTER, 8, 0));
+        settings.setOpaque(false);
+        settings.add(difficultyLabel);
+        settings.add(difficultyBox);
+        settings.add(Box.createHorizontalStrut(18));
+        settings.add(aggressionLabel);
+        settings.add(aggressionSlider);
+        settings.add(aggressionValue);
+        settings.setAlignmentX(CENTER_ALIGNMENT);
+        content.add(settings);
+        content.add(Box.createVerticalStrut(8));
+
+        scenarioBox.setFocusable(false);
+        scenarioBox.addItem(null);
+        for (Scenario s : Scenario.all()) scenarioBox.addItem(s);
+        scenarioBox.setRenderer(new javax.swing.DefaultListCellRenderer() {
+            @Override
+            public java.awt.Component getListCellRendererComponent(javax.swing.JList<?> l, Object v, int i, boolean s, boolean f) {
+                return super.getListCellRendererComponent(l, v == null ? I18n.tr("scenario.none") : ((Scenario) v).label(), i, s, f);
+            }
+        });
+        scenarioLabel.setForeground(MUTED);
+        JPanel scenarioRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 8, 0));
+        scenarioRow.setOpaque(false);
+        scenarioRow.add(scenarioLabel);
+        scenarioRow.add(scenarioBox);
+        playersLabel.setForeground(MUTED);
+        scenarioRow.add(Box.createHorizontalStrut(18));
+        scenarioRow.add(playersLabel);
+        scenarioRow.add(playersSpinner);
+        scenarioRow.setAlignmentX(CENTER_ALIGNMENT);
+        content.add(scenarioRow);
+        content.add(Box.createVerticalStrut(12));
+
         JPanel bottom = new JPanel(new FlowLayout(FlowLayout.CENTER, 16, 0));
         bottom.setOpaque(false);
         resumeBtn.addActionListener(e -> listener.resume());
         loadBtn.addActionListener(e -> listener.load());
+        editorBtn.addActionListener(e -> listener.editor());
         quitBtn.addActionListener(e -> listener.quit());
-        for (JButton b : new JButton[] {resumeBtn, loadBtn, quitBtn}) {
+        for (JButton b : new JButton[] {resumeBtn, loadBtn, editorBtn, quitBtn}) {
             b.setFocusable(false);
             b.setPreferredSize(new Dimension(200, 36));
             bottom.add(b);
@@ -142,8 +203,18 @@ public final class MainMenuPanel extends JPanel {
         applyingLanguage = false;
         subtitle.setText(I18n.tr("menu.subtitle"));
         languageLabel.setText(I18n.tr("menu.language"));
+        difficultyLabel.setText(I18n.tr("menu.difficulty"));
+        aggressionLabel.setText(I18n.tr("menu.aggression"));
+        aggressionSlider.setToolTipText(I18n.tr("menu.aggression.tip"));
+        difficultyBox.repaint();
+        scenarioLabel.setText(I18n.tr("menu.scenario"));
+        playersLabel.setText(I18n.tr("menu.players"));
+        playersSpinner.setToolTipText(I18n.tr("menu.players.tip"));
+        scenarioBox.setToolTipText(I18n.tr("menu.scenario.tip"));
+        scenarioBox.repaint();
         resumeBtn.setText(I18n.tr("menu.resume"));
         loadBtn.setText(I18n.tr("menu.load"));
+        editorBtn.setText(I18n.tr("menu.editor"));
         quitBtn.setText(I18n.tr("menu.quit"));
         rerollBtn.setText(I18n.tr("menu.reroll"));
         rerollBtn.setToolTipText(I18n.tr("menu.reroll.tip"));
@@ -244,6 +315,25 @@ public final class MainMenuPanel extends JPanel {
         listener.play(kind, kind == MapKind.RANDOM ? randomSeed : System.nanoTime());
     }
 
+    /** Number of human players on this computer (1 = normal game, 2 - 4 = hotseat). */
+    public int players() {
+        return (Integer) playersSpinner.getValue();
+    }
+
+    /** The chosen scenario, or null for the modern borders. Only real maps use it. */
+    public Scenario scenario() {
+        return (Scenario) scenarioBox.getSelectedItem();
+    }
+
+    public Difficulty difficulty() {
+        return (Difficulty) difficultyBox.getSelectedItem();
+    }
+
+    /** How eager the AI is to start wars, 0 - 100 (50 = normal). */
+    public int aggression() {
+        return aggressionSlider.getValue();
+    }
+
     /** Called by the window while a world is being generated. */
     public void setBusy(String message) {
         busy = message != null;
@@ -259,6 +349,7 @@ public final class MainMenuPanel extends JPanel {
         for (JPanel card : cards.values()) setEnabledRecursive(card, enabled);
         resumeBtn.setEnabled(enabled);
         loadBtn.setEnabled(enabled);
+        editorBtn.setEnabled(enabled);
         setCursor(Cursor.getPredefinedCursor(enabled ? Cursor.DEFAULT_CURSOR : Cursor.WAIT_CURSOR));
     }
 

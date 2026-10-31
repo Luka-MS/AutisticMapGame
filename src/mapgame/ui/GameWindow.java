@@ -9,6 +9,8 @@ import java.awt.GridLayout;
 import java.awt.LayoutManager;
 import java.awt.Rectangle;
 import java.awt.event.ActionEvent;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -21,31 +23,44 @@ import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.ButtonGroup;
+import javax.swing.DefaultListCellRenderer;
+import javax.swing.DefaultListModel;
 import javax.swing.JButton;
+import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JFileChooser;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
+import javax.swing.JList;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JSplitPane;
+import javax.swing.JTabbedPane;
 import javax.swing.JTextArea;
 import javax.swing.JToggleButton;
 import javax.swing.KeyStroke;
+import javax.swing.ListSelectionModel;
 import javax.swing.Scrollable;
 import javax.swing.SwingUtilities;
 import javax.swing.UIManager;
 import javax.swing.SwingWorker;
 import javax.swing.Timer;
 import javax.swing.filechooser.FileNameExtensionFilter;
+import mapgame.audio.SoundManager;
 import mapgame.i18n.I18n;
 import mapgame.model.Army;
+import mapgame.model.ArmyType;
+import mapgame.model.Building;
 import mapgame.model.Country;
+import mapgame.model.Fleet;
 import mapgame.model.MapKind;
 import mapgame.model.Province;
+import mapgame.sim.Difficulty;
 import mapgame.sim.Game;
+import mapgame.sim.Navy;
 import mapgame.sim.SaveFile;
+import mapgame.sim.Scenario;
 
 public final class GameWindow extends JFrame {
     /** Real milliseconds per in-game day for speeds 1..5 (index 0 = paused). */
@@ -54,15 +69,25 @@ public final class GameWindow extends JFrame {
     private final MapPanel map = new MapPanel();
     private final JLabel dateLabel = new JLabel();
     private final JTextArea status = textArea(5), info = textArea(8), logArea = new JTextArea();
-    private final JButton startBtn = button(), recruitBtn = button(), splitBtn = button(), mergeBtn = button(),
-            groupsBtn = button(), warBtn = button(), totalWarBtn = button(), peaceBtn = button(), menuBtn = button(),
-            saveBtn = button(), loadBtn = button(), modeBtn = button();
+    private final JButton startBtn = button(), pickBtn = button(), recruitBtn = button(), splitBtn = button(), mergeBtn = button(),
+            fleetBtn = button(), embarkBtn = button(), unloadBtn = button(),
+            groupsBtn = button(), warBtn = button(), totalWarBtn = button(), peaceBtn = button(), allianceBtn = button(), nationBtn = button(),
+            menuBtn = button(), saveBtn = button(), loadBtn = button(), modeBtn = button(), fogBtn = button(), soundBtn = button();
     private final List<JToggleButton> speedBtns = new ArrayList<>();
     private JSplitPane sideSplit;
     private final ArmyGroupDialog groupDialog;
+    private final NationDialog nationDialog;
+    private final NationPickerDialog pickerDialog;
     private final CardLayout cards = new CardLayout();
     private final JPanel root = new JPanel(cards);
     private final MainMenuPanel menu;
+    private final EditorPanel editorPanel = new EditorPanel(this::showMenu);
+    private final JTabbedPane logTabs = new JTabbedPane();
+    private final SoundManager sound = new SoundManager();
+    private final JComboBox<ArmyType> typeBox = new JComboBox<>(ArmyType.values());
+    private final DefaultListModel<Game.Event> eventModel = new DefaultListModel<>();
+    private final JList<Game.Event> eventList = new JList<>(eventModel);
+    private int unreadEvents;
 
     private static final Path SAVE_DIR = Paths.get("saves");
     private static final Path QUICKSAVE = SAVE_DIR.resolve("quicksave" + SaveFile.EXTENSION);
@@ -71,6 +96,16 @@ public final class GameWindow extends JFrame {
     private Game game;
     private boolean started;
     private boolean inMenu = true;
+    private boolean modalOpen;
+
+    // Hotseat: several human players on one computer, taking turns of 30 days.
+    private static final int TURN_DAYS = 30;
+    private final List<Country> seats = new ArrayList<>();
+    private final JButton endTurnBtn = button();
+    private final JLabel curtainLabel = new JLabel("", javax.swing.SwingConstants.CENTER);
+    private final JButton curtainOk = new JButton();
+    private int newGamePlayers = 1, seat, turnDaysLeft;
+    private boolean hotseat, curtain;
     private boolean dividerPlaced;
     private int speed;
     private int lastAutosaveYear;
@@ -101,6 +136,12 @@ public final class GameWindow extends JFrame {
             }
 
             @Override
+            public void editor() {
+                editorPanel.open();
+                cards.show(root, "editor");
+            }
+
+            @Override
             public void quit() {
                 dispose();
                 System.exit(0);
@@ -108,6 +149,8 @@ public final class GameWindow extends JFrame {
         });
         root.add(menu, "menu");
         root.add(gamePanel, "game");
+        root.add(editorPanel, "editor");
+        root.add(buildCurtain(), "curtain");
         setContentPane(root);
         installKeys();
         I18n.addListener(this::applyLanguage);
@@ -115,6 +158,11 @@ public final class GameWindow extends JFrame {
         setSize(1380, 820);
         setLocationRelativeTo(null);
         groupDialog = new ArmyGroupDialog(this, map);
+        nationDialog = new NationDialog(this, map);
+        pickerDialog = new NationPickerDialog(this, c -> map.showProvince(c.capital));
+        pickBtn.addActionListener(e -> {
+            if (game != null && !started) pickerDialog.open(game);
+        });
         applyLanguage();
 
         startBtn.addActionListener(e -> startGame());
@@ -122,14 +170,30 @@ public final class GameWindow extends JFrame {
         saveBtn.addActionListener(e -> saveWithChooser());
         loadBtn.addActionListener(e -> loadWithChooser());
         modeBtn.addActionListener(e -> toggleMode());
+        fogBtn.addActionListener(e -> toggleFog());
+        endTurnBtn.addActionListener(e -> endTurn());
+        soundBtn.addActionListener(e -> cycleSound());
         groupsBtn.addActionListener(e -> showGroups());
+        nationBtn.addActionListener(e -> showNation(null));
         recruitBtn.addActionListener(e -> {
             Province p = map.selectedProvince();
-            if (p != null && game.recruit(game.player, p) == null) game.log(I18n.tr("log.cannot.recruit"));
+            if (p != null && game.recruit(game.player, p, (ArmyType) typeBox.getSelectedItem()) == null) game.log(I18n.tr("log.cannot.recruit"));
             refresh();
         });
+        typeBox.setFocusable(false);
+        typeBox.setRenderer(new DefaultListCellRenderer() {
+            @Override
+            public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean selected, boolean focus) {
+                ArmyType t = (ArmyType) value;
+                return super.getListCellRendererComponent(list, I18n.tr("unit.item", t.label(), Game.recruitGold(t)), index, selected, focus);
+            }
+        });
+        typeBox.addActionListener(e -> refresh());
         splitBtn.addActionListener(e -> splitSelected());
         mergeBtn.addActionListener(e -> mergeSelected());
+        fleetBtn.addActionListener(e -> buildFleet());
+        embarkBtn.addActionListener(e -> embarkSelected());
+        unloadBtn.addActionListener(e -> unloadSelected());
         warBtn.addActionListener(e -> {
             Province p = map.selectedProvince();
             if (p != null && p.owner != null) game.declareWar(game.player, p.owner);
@@ -148,6 +212,13 @@ public final class GameWindow extends JFrame {
             if (p != null && p.owner != null) game.log(game.proposePeace(game.player, p.owner));
             refresh();
         });
+        allianceBtn.addActionListener(e -> {
+            Province p = map.selectedProvince();
+            if (p == null || p.owner == null) return;
+            if (game.allied(game.player, p.owner)) game.breakAlliance(game.player, p.owner);
+            else game.log(game.proposeAlliance(game.player, p.owner));
+            refresh();
+        });
 
         new Timer(16, e -> frame()).start();
     }
@@ -160,6 +231,7 @@ public final class GameWindow extends JFrame {
     private void showMenu() {
         inMenu = true;
         groupDialog.setVisible(false);
+        nationDialog.setVisible(false);
         menu.setBusy(null);
         menu.setCanResume(game != null);
         cards.show(root, "menu");
@@ -168,7 +240,7 @@ public final class GameWindow extends JFrame {
     private void showGame() {
         inMenu = false;
         lastNanos = System.nanoTime();
-        cards.show(root, "game");
+        cards.show(root, curtain ? "curtain" : "game");
         root.validate();
         if (!dividerPlaced) {
             dividerPlaced = true;
@@ -179,10 +251,19 @@ public final class GameWindow extends JFrame {
     /** Generates the world in the background, then switches from the menu to the game. */
     public void startNewGame(MapKind kind, long seed) {
         menu.setBusy(I18n.tr("menu.generating", kind.label()));
+        newGamePlayers = menu.players();
+        Difficulty difficulty = menu.difficulty();
+        Scenario scenario = menu.scenario();
+        // A scenario made with the map editor for a random world fixes the world seed.
+        long worldSeed = scenario != null && scenario.seed != null && scenario.supports(kind) ? scenario.seed : seed;
+        int aggression = menu.aggression();
         new SwingWorker<Game, Void>() {
             @Override
             protected Game doInBackground() {
-                return Game.create(kind, seed);
+                Game g = Game.create(kind, worldSeed, scenario);
+                g.difficulty = difficulty;
+                g.aggression = aggression;
+                return g;
             }
 
             @Override
@@ -204,12 +285,37 @@ public final class GameWindow extends JFrame {
             logArea.append(s + "\n");
             logArea.setCaretPosition(logArea.getDocument().getLength());
         };
+        eventModel.clear();
+        unreadEvents = 0;
+        game.decisions = this::askDecision;
+        game.cueSink = sound::play;
+        game.eventSink = ev -> {
+            eventModel.add(0, ev);
+            if (eventModel.size() > Game.MAX_EVENTS) eventModel.removeElementAt(eventModel.size() - 1);
+            if (logTabs.getSelectedIndex() != 1) unreadEvents++;
+            updateTabTitles();
+        };
+        updateTabTitles();
         started = restored && g.player != null;
+        seats.clear();
+        hotseat = false;
+        curtain = false;
+        turnDaysLeft = 0;
+        if (restored) {
+            newGamePlayers = 1;
+            // A saved hotseat game continues with the planning phase of the player who saved.
+            if (started && g.humans.size() > 1) {
+                for (Country c : g.humans) if (c.alive) seats.add(c);
+                hotseat = seats.size() > 1;
+                seat = Math.max(0, seats.indexOf(g.player));
+            }
+        }
         acc = 0;
         lastAutosaveYear = g.day / 360;
         logArea.setText("");
         setSpeed(0);
         groupDialog.bind(game);
+        nationDialog.bind(game);
         showGame();
         map.setGame(game);
         if (started) {
@@ -305,6 +411,17 @@ public final class GameWindow extends JFrame {
         }
     }
 
+    private void showNation(String page) {
+        if (!started) return;
+        if (page == null) {
+            nationDialog.setVisible(true);
+            nationDialog.toFront();
+            nationDialog.refresh();
+        } else {
+            nationDialog.show(page);
+        }
+    }
+
     private void showGroups() {
         if (!started) return;
         groupDialog.setVisible(true);
@@ -314,6 +431,44 @@ public final class GameWindow extends JFrame {
 
     private boolean playerArmy(Army a) {
         return started && a != null && !a.dead && a.owner == game.player;
+    }
+
+    private void buildFleet() {
+        Province p = map.selectedProvince();
+        if (!started || p == null) return;
+        Fleet f = Navy.recruit(game, game.player, p);
+        if (f == null) game.log(I18n.tr("fleet.cannot.build"));
+        else map.selectFleet(f);
+        refresh();
+    }
+
+    /** Fleet selected: load the armies waiting in its port. Armies selected: board a fleet lying in the same port. */
+    private void embarkSelected() {
+        if (!started) return;
+        Fleet f = map.selectedFleet();
+        int n = 0;
+        if (f != null && f.owner == game.player) {
+            n = Navy.embarkAll(game, f);
+        } else {
+            for (Army a : map.selectedArmies()) {
+                if (!playerArmy(a)) continue;
+                for (Fleet x : game.fleetsOf(game.player)) {
+                    if (x.inPort() && x.location == a.location && Navy.embark(game, a, x)) {
+                        n++;
+                        break;
+                    }
+                }
+            }
+        }
+        if (n == 0) game.log(I18n.tr("fleet.cannot.embark"));
+        refresh();
+    }
+
+    private void unloadSelected() {
+        Fleet f = map.selectedFleet();
+        if (!started || f == null || f.owner != game.player) return;
+        if (Navy.disembark(game, f, f.location) == 0) game.log(I18n.tr("fleet.cannot.unload"));
+        refresh();
     }
 
     private void splitSelected() {
@@ -355,8 +510,14 @@ public final class GameWindow extends JFrame {
         }
         speedBtns.get(0).setSelected(true);
         head.add(left(speeds));
+        head.add(Box.createVerticalStrut(4));
+        head.add(left(endTurnBtn));
         head.add(Box.createVerticalStrut(6));
         head.add(left(modeBtn));
+        head.add(Box.createVerticalStrut(4));
+        head.add(left(fogBtn));
+        head.add(Box.createVerticalStrut(4));
+        head.add(left(soundBtn));
         head.add(Box.createVerticalStrut(6));
         head.add(scroll(status, 100));
 
@@ -364,7 +525,7 @@ public final class GameWindow extends JFrame {
 
         JPanel buttons = new JPanel();
         buttons.setLayout(new BoxLayout(buttons, BoxLayout.Y_AXIS));
-        for (JButton b : new JButton[] {startBtn, recruitBtn, splitBtn, mergeBtn, groupsBtn, warBtn, totalWarBtn, peaceBtn}) buttons.add(left(b));
+        for (JComponent b : new JComponent[] {startBtn, pickBtn, typeBox, recruitBtn, splitBtn, mergeBtn, fleetBtn, embarkBtn, unloadBtn, groupsBtn, nationBtn, warBtn, totalWarBtn, peaceBtn, allianceBtn}) buttons.add(left(b));
 
         JPanel top = new WidthTrackingPanel(new BorderLayout(0, 6));
         top.setBorder(BorderFactory.createEmptyBorder(8, 8, 4, 8));
@@ -385,7 +546,24 @@ public final class GameWindow extends JFrame {
         logArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 11));
         JPanel bottom = new JPanel(new BorderLayout(0, 6));
         bottom.setBorder(BorderFactory.createEmptyBorder(4, 8, 8, 8));
-        bottom.add(new JScrollPane(logArea), BorderLayout.CENTER);
+        eventList.setCellRenderer(new EventRenderer());
+        eventList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        eventList.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                int i = eventList.locationToIndex(e.getPoint());
+                if (i < 0 || !eventList.getCellBounds(i, i).contains(e.getPoint())) return;
+                Game.Event ev = eventModel.get(i);
+                if (ev.where() != null) map.showProvince(ev.where());
+            }
+        });
+        logTabs.addTab("", new JScrollPane(logArea));
+        logTabs.addTab("", new JScrollPane(eventList));
+        logTabs.addChangeListener(e -> {
+            if (logTabs.getSelectedIndex() == 1) unreadEvents = 0;
+            updateTabTitles();
+        });
+        bottom.add(logTabs, BorderLayout.CENTER);
         JPanel bottomButtons = new JPanel(new GridLayout(1, 3, 4, 0));
         for (JButton b : new JButton[] {saveBtn, loadBtn, menuBtn}) bottomButtons.add(b);
         bottom.add(bottomButtons, BorderLayout.SOUTH);
@@ -408,9 +586,17 @@ public final class GameWindow extends JFrame {
             bind(Integer.toString(i), () -> setSpeed(s));
         }
         bind("M", this::toggleMode);
+        bind("ENTER", this::endTurn);
+        bind("F", this::toggleFog);
+        bind("O", this::cycleSound);
         bind("X", this::splitSelected);
+        bind("E", this::embarkSelected);
+        bind("U", this::unloadSelected);
         bind("C", this::mergeSelected);
         bind("G", this::showGroups);
+        bind("N", () -> showNation(null));
+        bind("H", this::goHome);
+        bind("HOME", this::goHome);
         bind("F5", this::quickSave);
         bind("F9", this::quickLoad);
         bind("ESCAPE", map::clearSelection);
@@ -436,6 +622,10 @@ public final class GameWindow extends JFrame {
     private void startGame() {
         Province p = map.selectedProvince();
         if (p == null || p.owner == null) return;
+        if (newGamePlayers > 1) {
+            startHotseatSeat(p.owner);
+            return;
+        }
         game.player = p.owner;
         started = true;
         game.log(I18n.tr("log.start", game.player.displayName()));
@@ -444,8 +634,130 @@ public final class GameWindow extends JFrame {
         refresh();
     }
 
+    /** Hotseat setup: every human picks a nation in turn; when all have chosen, the first one starts planning. */
+    private void startHotseatSeat(Country c) {
+        if (seats.contains(c)) {
+            game.log(I18n.tr("hotseat.taken", c.displayName()));
+            return;
+        }
+        seats.add(c);
+        game.humans.add(c);
+        game.log(I18n.tr("hotseat.chosen", seats.size(), c.displayName()));
+        if (seats.size() < newGamePlayers) {
+            game.log(I18n.tr("hotseat.pick", seats.size() + 1, newGamePlayers));
+            refresh();
+            return;
+        }
+        hotseat = true;
+        started = true;
+        seat = 0;
+        game.player = seats.get(0);
+        game.log(I18n.tr("hotseat.begin", game.player.displayName()));
+        map.centerOn(game.player.capital);
+        setSpeed(0);
+        refresh();
+    }
+
+    /** Finishes the planning of the current player; after the last one the world runs for {@value #TURN_DAYS} days. */
+    private void endTurn() {
+        if (!hotseat || !started || turnDaysLeft > 0 || curtain) return;
+        seat++;
+        if (seat < seats.size()) {
+            showCurtain();
+            return;
+        }
+        seat = 0;
+        turnDaysLeft = TURN_DAYS;
+        acc = 0;
+        game.log(I18n.tr("hotseat.simulating", TURN_DAYS));
+    }
+
+    private void simulateTurn(double dt) {
+        if (turnDaysLeft <= 0) return;
+        acc += dt;
+        int steps = 0;
+        while (acc >= DAY_MS[4] && turnDaysLeft > 0 && steps < 10) {
+            acc -= DAY_MS[4];
+            game.tickDay();
+            turnDaysLeft--;
+            steps++;
+        }
+        if (steps == 10) acc = 0;
+        if (game.day / 360 > lastAutosaveYear) {
+            lastAutosaveYear = game.day / 360;
+            autosave();
+        }
+        if (turnDaysLeft == 0) afterTurn();
+    }
+
+    /** The month is over: drop eliminated players, check for a winner, then hand over to the first player. */
+    private void afterTurn() {
+        for (Country c : new ArrayList<>(seats)) {
+            if (c.alive) continue;
+            seats.remove(c);
+            game.humans.remove(c);
+            JOptionPane.showMessageDialog(this, I18n.tr("dlg.defeat", c.displayName()), I18n.tr("dlg.defeat.title"), JOptionPane.WARNING_MESSAGE);
+        }
+        if (seats.isEmpty()) {
+            started = false;
+            hotseat = false;
+            return;
+        }
+        if (game.aliveCountries().size() == 1) {
+            started = false;
+            hotseat = false;
+            JOptionPane.showMessageDialog(this, I18n.tr("hotseat.winner", seats.get(0).displayName()), I18n.tr("dlg.victory.title"),
+                    JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+        hotseat = seats.size() > 1;
+        seat = 0;
+        if (hotseat) {
+            showCurtain();
+        } else {
+            game.player = seats.get(0);
+            setSpeed(1);
+        }
+    }
+
+    /** A blank screen between two players so nobody sees the other one's map. */
+    private void showCurtain() {
+        curtain = true;
+        curtainLabel.setText(I18n.tr("hotseat.curtain", seat + 1, seats.size(), seats.get(seat).displayName(), game.date()));
+        cards.show(root, "curtain");
+    }
+
+    private JPanel buildCurtain() {
+        JPanel p = new JPanel(new BorderLayout(0, 24));
+        p.setBackground(new java.awt.Color(0x0F1B2A));
+        p.setBorder(BorderFactory.createEmptyBorder(160, 80, 160, 80));
+        curtainLabel.setForeground(java.awt.Color.WHITE);
+        curtainLabel.setFont(curtainLabel.getFont().deriveFont(Font.BOLD, 30f));
+        curtainOk.setFocusable(false);
+        curtainOk.setFont(curtainOk.getFont().deriveFont(Font.BOLD, 20f));
+        curtainOk.addActionListener(e -> {
+            curtain = false;
+            game.player = seats.get(seat);
+            map.clearSelection();
+            map.centerOn(game.player.capital);
+            cards.show(root, "game");
+            lastNanos = System.nanoTime();
+            refresh();
+        });
+        p.add(curtainLabel, BorderLayout.CENTER);
+        JPanel south = new JPanel();
+        south.setOpaque(false);
+        south.add(curtainOk);
+        p.add(south, BorderLayout.SOUTH);
+        return p;
+    }
+
+    private void goHome() {
+        if (started && game.player.capital != null) map.showProvince(game.player.capital);
+    }
+
     private void setSpeed(int s) {
-        speed = started ? s : 0;
+        speed = started && !hotseat ? s : 0;
         speedBtns.get(speed).setSelected(true);
     }
 
@@ -456,20 +768,66 @@ public final class GameWindow extends JFrame {
         UIManager.put("OptionPane.okButtonText", I18n.tr("dlg.ok"));
         UIManager.put("OptionPane.cancelButtonText", I18n.tr("dlg.cancel"));
         startBtn.setText(I18n.tr("btn.start"));
+        pickBtn.setText(I18n.tr("btn.pick"));
         recruitBtn.setText(I18n.tr("btn.recruit", Game.RECRUIT_GOLD, Game.RECRUIT_MEN));
         splitBtn.setText(I18n.tr("btn.split"));
         mergeBtn.setText(I18n.tr("btn.merge"));
+        fleetBtn.setText(I18n.tr("btn.fleet", Navy.FLEET_GOLD, Navy.FLEET_MEN));
+        embarkBtn.setText(I18n.tr("btn.embark"));
+        unloadBtn.setText(I18n.tr("btn.unload"));
         groupsBtn.setText(I18n.tr("btn.groups"));
+        nationBtn.setText(I18n.tr("btn.nation"));
         menuBtn.setText(I18n.tr("btn.menu"));
         saveBtn.setText(I18n.tr("btn.save"));
         loadBtn.setText(I18n.tr("btn.load"));
         updateModeText();
+        updateSoundText();
+        curtainOk.setText(I18n.tr("hotseat.ready"));
+        updateTabTitles();
+        typeBox.repaint();
+        eventList.repaint();
         map.repaint();
         refresh();
     }
 
+    private void updateTabTitles() {
+        logTabs.setTitleAt(0, I18n.tr("tab.log"));
+        logTabs.setTitleAt(1, unreadEvents > 0 ? I18n.tr("tab.events.new", unreadEvents) : I18n.tr("tab.events"));
+    }
+
+    /** One line of the notification list: date and text, wrapped. */
+    private static final class EventRenderer extends DefaultListCellRenderer {
+        @Override
+        public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean selected, boolean focus) {
+            Game.Event ev = (Game.Event) value;
+            String text = Game.formatDate(ev.day()) + "  " + ev.text();
+            JLabel l = (JLabel) super.getListCellRendererComponent(list, "", index, selected, focus);
+            int width = Math.max(120, list.getWidth() - 24);
+            l.setText("<html><body style='width:" + width + "px'>" + text.replace("&", "&amp;").replace("<", "&lt;") + "</body></html>");
+            l.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 11));
+            l.setBorder(BorderFactory.createEmptyBorder(2, 4, 2, 4));
+            l.setToolTipText(null);
+            return l;
+        }
+    }
+
     private void updateModeText() {
         modeBtn.setText(I18n.tr("btn.mode", map.mode().label()));
+    }
+
+    private void cycleSound() {
+        sound.setMode(sound.mode().next());
+        updateSoundText();
+    }
+
+    private void updateSoundText() {
+        soundBtn.setText(I18n.tr("btn.sound", I18n.tr("sound." + sound.mode().name())));
+    }
+
+    private void toggleFog() {
+        if (game == null || !started) return;
+        game.fogOfWar = !game.fogOfWar;
+        refresh();
     }
 
     private void toggleMode() {
@@ -477,12 +835,30 @@ public final class GameWindow extends JFrame {
         updateModeText();
     }
 
+    /** Shows a decision event; the game stands still while the question is open. */
+    private int askDecision(String title, String text, List<String> options) {
+        int oldSpeed = speed;
+        setSpeed(0);
+        modalOpen = true;
+        try {
+            int choice = JOptionPane.showOptionDialog(this, "<html><body style='width:320px'>" + text + "</body></html>", title,
+                    JOptionPane.DEFAULT_OPTION, JOptionPane.QUESTION_MESSAGE, null, options.toArray(), options.get(0));
+            return Math.max(0, choice);
+        } finally {
+            modalOpen = false;
+            lastNanos = System.nanoTime();
+            setSpeed(oldSpeed);
+        }
+    }
+
     private void frame() {
         long now = System.nanoTime();
         double dt = (now - lastNanos) / 1e6;
         lastNanos = now;
-        if (inMenu) return;
-        if (started && speed > 0) {
+        if (inMenu || modalOpen || curtain) return;
+        if (started && hotseat) {
+            simulateTurn(dt);
+        } else if (started && speed > 0) {
             acc += dt;
             int steps = 0;
             while (acc >= DAY_MS[speed] && steps < 10) {
@@ -525,6 +901,15 @@ public final class GameWindow extends JFrame {
         Country me = game.player;
         Province sel = map.selectedProvince();
         dateLabel.setText(game.date());
+        fogBtn.setText(I18n.tr("btn.fog", I18n.tr(game.fogOfWar ? "fog.on" : "fog.off")));
+        fogBtn.setEnabled(started);
+        endTurnBtn.setVisible(hotseat && started);
+        endTurnBtn.setEnabled(hotseat && turnDaysLeft == 0 && !curtain);
+        if (hotseat && me != null) {
+            endTurnBtn.setText(turnDaysLeft > 0 ? I18n.tr("hotseat.running", turnDaysLeft)
+                    : I18n.tr("hotseat.endturn", seat + 1, seats.size(), me.displayName()));
+        }
+        for (JToggleButton b : speedBtns) b.setEnabled(!hotseat);
 
         if (started && me != null) {
             double net = game.monthlyIncome(me) - game.monthlyUpkeep(me);
@@ -539,24 +924,40 @@ public final class GameWindow extends JFrame {
         set(info, describe(sel));
 
         startBtn.setVisible(!started);
+        pickBtn.setVisible(!started);
         startBtn.setEnabled(sel != null && sel.owner != null);
         boolean playing = started && me != null;
         boolean own = playing && sel != null && sel.owner == me && sel.controller == me;
         boolean foreign = playing && sel != null && sel.owner != null && sel.owner != me;
-        recruitBtn.setEnabled(own && me.gold >= Game.RECRUIT_GOLD && me.manpower >= Game.RECRUIT_MEN);
+        ArmyType recruitType = (ArmyType) typeBox.getSelectedItem();
+        int recruitGold = Game.recruitGold(recruitType);
+        recruitBtn.setText(I18n.tr("btn.recruit", recruitGold, Game.RECRUIT_MEN));
+        recruitBtn.setEnabled(own && me.gold >= recruitGold && me.manpower >= Game.RECRUIT_MEN);
+        typeBox.setEnabled(playing);
         Army sa = map.selectedArmy();
         boolean mine = playerArmy(sa);
         splitBtn.setEnabled(mine && game.canSplit(sa));
         mergeBtn.setEnabled(mine && game.mergeCandidates(sa) > 0);
-        warBtn.setEnabled(foreign && !game.atWar(me, sel.owner));
+        Fleet sf = map.selectedFleet();
+        boolean myFleet = playing && sf != null && !sf.dead && sf.owner == me;
+        fleetBtn.setEnabled(own && sel != null && Navy.isPort(sel) && me.gold >= Navy.FLEET_GOLD && me.manpower >= Navy.FLEET_MEN);
+        embarkBtn.setEnabled(myFleet && sf.inPort() || mine && sa.fleet == null);
+        unloadBtn.setEnabled(myFleet && sf.inPort() && !sf.cargo.isEmpty());
         boolean atWarWithSel = foreign && game.atWar(me, sel.owner);
+        boolean alliedWithSel = foreign && game.allied(me, sel.owner);
+        warBtn.setEnabled(foreign && !atWarWithSel && !alliedWithSel && !game.hasPact(me, sel.owner));
         boolean totalWithSel = atWarWithSel && game.isTotalWar(me, sel.owner);
-        totalWarBtn.setEnabled(foreign && !totalWithSel);
+        totalWarBtn.setEnabled(foreign && !totalWithSel && !alliedWithSel && !game.hasPact(me, sel.owner));
+        allianceBtn.setEnabled(foreign && !atWarWithSel);
+        allianceBtn.setText(!foreign ? I18n.tr("btn.alliance")
+                : I18n.tr(alliedWithSel ? "btn.alliance.break" : "btn.alliance.propose", sel.owner.displayName()));
         totalWarBtn.setText(!foreign ? I18n.tr("btn.total")
                 : I18n.tr(atWarWithSel ? "btn.total.escalate" : "btn.total.on", sel.owner.displayName()));
         peaceBtn.setEnabled(atWarWithSel && !totalWithSel);
         peaceBtn.setText(I18n.tr(totalWithSel ? "btn.peace.none" : "btn.peace"));
         groupsBtn.setEnabled(playing);
+        nationBtn.setEnabled(playing);
+        nationDialog.refresh();
         warBtn.setText(foreign ? I18n.tr("btn.war.on", sel.owner.displayName()) : I18n.tr("btn.war"));
         if (groupDialog.isVisible()) groupDialog.refresh();
     }
@@ -565,21 +966,43 @@ public final class GameWindow extends JFrame {
         if (p == null) return I18n.tr("info.none");
         StringBuilder sb = new StringBuilder();
         sb.append(I18n.tr("info.name", p.name, p.terrain.label())).append('\n');
-        if (!p.isLand()) return sb.append(I18n.tr("info.sea")).toString();
-        sb.append(I18n.tr("info.population", p.population, p.income())).append('\n');
+        if (!p.isLand()) {
+            sb.append(I18n.tr("info.sea"));
+            appendFleet(sb);
+            return sb.toString();
+        }
+        sb.append(I18n.tr("info.population", p.population, p.income(game.day))).append('\n');
+        if (p.city != null) sb.append(I18n.tr("info.city", p.city, p.cityPopulation)).append('\n');
+        if (p.isCapital()) sb.append(I18n.tr("info.capital", p.owner.displayName())).append('\n');
         sb.append(I18n.tr("info.owner", p.owner == null ? I18n.tr("info.unclaimed") : p.owner.displayName())).append('\n');
         if (p.owner != null && p.controller != p.owner) sb.append(I18n.tr("info.occupied", p.controller.displayName())).append('\n');
         if (!p.ferryTo.isEmpty()) sb.append(I18n.tr("info.ferry", Province.FERRY_DAYS)).append('\n');
         sb.append(I18n.tr("info.travel", p.terrain.moveDays)).append('\n');
+        if (game.isBlockaded(p)) sb.append(I18n.tr("info.blockaded")).append('\n');
+        if (Navy.isPort(p)) sb.append(I18n.tr("info.port")).append('\n');
+        StringBuilder built = new StringBuilder();
+        for (Building b : Building.values()) {
+            if (p.level(b) > 0) built.append(built.length() > 0 ? ", " : "").append(b.label()).append(' ').append(p.level(b));
+        }
+        if (built.length() > 0) sb.append(I18n.tr("info.buildings", built)).append('\n');
+        if (p.unrest > 0) sb.append(I18n.tr("info.unrest", (int) p.unrest)).append('\n');
         if (p.owner != null) {
             Country c = p.owner;
             sb.append('\n').append(I18n.tr("info.country", c.displayName(), c.provinces.size(), game.strength(c))).append('\n');
             if (started && c != game.player) {
                 if (game.atWar(game.player, c)) {
                     sb.append(I18n.tr(game.isTotalWar(game.player, c) ? "info.war.total" : "info.war", game.warScore(game.player, c)));
+                } else if (game.allied(game.player, c)) {
+                    sb.append(I18n.tr("info.allied"));
                 } else {
                     sb.append(I18n.tr("info.peace"));
                 }
+            }
+            List<Country> allies = game.alliesOf(c);
+            if (!allies.isEmpty()) {
+                StringBuilder names = new StringBuilder();
+                for (Country al : allies) names.append(names.length() > 0 ? ", " : "").append(al.displayName());
+                sb.append('\n').append(I18n.tr("info.allies", names));
             }
         }
         Army a = map.selectedArmy();
@@ -593,10 +1016,31 @@ public final class GameWindow extends JFrame {
                 sb.append("\n\n").append(I18n.tr("info.armies", all.size(), men));
             } else {
                 sb.append("\n\n").append(I18n.tr("info.army", a.owner.displayName(), a.strength, state));
+                double loss = game.attritionRate(a) * 6 * 100;
+                sb.append('\n').append(loss <= 0 ? I18n.tr("info.supply.ok") : I18n.tr("info.supply.bad", loss));
+                sb.append('\n').append(I18n.tr("info.army.type", a.type.label(), (int) a.experience));
+                sb.append('\n').append(I18n.tr("info.army.morale", (int) a.morale));
+                if (a.general() != null) sb.append('\n').append(I18n.tr("info.army.general", a.general(), a.generalSkill()));
             }
             if (a.group != null) sb.append('\n').append(I18n.tr("info.group", a.group.displayName()));
         }
+        appendFleet(sb);
         return sb.toString();
+    }
+
+    private void appendFleet(StringBuilder sb) {
+        Fleet f = map.selectedFleet();
+        if (f == null || f.dead) return;
+        String where = f.inPort() ? I18n.tr("fleet.inport", f.location.name) : I18n.tr("fleet.sea");
+        sb.append("\n\n").append(I18n.tr("info.fleet", f.owner.displayName(), f.strength, where));
+        sb.append('\n').append(I18n.tr("info.fleet.cargo", f.cargoMen(), f.capacity()));
+        if (!f.path.isEmpty()) sb.append('\n').append(I18n.tr("fleet.sailing", lastOf(f).name));
+    }
+
+    private static Province lastOf(Fleet f) {
+        Province last = null;
+        for (Province p : f.path) last = p;
+        return last;
     }
 
     private static Province lastOf(Army a) {
@@ -668,7 +1112,7 @@ public final class GameWindow extends JFrame {
 
     private static JComponent left(JComponent c) {
         c.setAlignmentX(Component.LEFT_ALIGNMENT);
-        if (c instanceof JButton) c.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
+        if (c instanceof JButton || c instanceof JComboBox) c.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
         return c;
     }
 }

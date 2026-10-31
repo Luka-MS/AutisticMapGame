@@ -3,9 +3,13 @@
 Usage: python tools/prepare_data.py [cache_dir]
 
 Output format (tab separated, coordinates are lon lat pairs rounded to 2 decimals):
-  C <name> <population>      start of a country, followed by R lines
+  C <name> <population> <adm0 code>  start of a country, followed by R lines
+  S <name> <split|whole>     subdivision (state/province) of the current country, followed by R lines.
+                             whole = the subdivision becomes exactly one map province, split = it may hold several
   T <M|D|U>                  terrain region (mountains, desert, tundra), followed by R lines
   R x y x y ...              one polygon ring (holes are plain rings; fill rule is even-odd)
+  P <name> <lon> <lat> <population> <capital 0|1> <adm0 code> <adm0 name>   city or capital
+  V x y x y ...              one river polyline (lon lat pairs), drawn on the map
 """
 import json
 import math
@@ -14,9 +18,19 @@ import sys
 import urllib.request
 
 BASE = "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/"
-FILES = ["ne_50m_admin_0_countries.geojson", "ne_50m_geography_regions_polys.geojson"]
+FILES = [
+    "ne_50m_admin_0_countries.geojson",
+    "ne_50m_geography_regions_polys.geojson",
+    "ne_50m_populated_places_simple.geojson",
+    "ne_50m_rivers_lake_centerlines.geojson",
+    "ne_10m_admin_1_states_provinces.geojson",
+]
+# Countries (Natural Earth "admin" names) whose first-level subdivisions become separate map areas.
+# "split": a subdivision may hold several provinces; "whole": a subdivision is exactly one province.
+SUBDIVIDE = {"Germany": "split", "Russia": "whole"}
 EPS = 0.03
 MIN_RING_EXTENT = 0.12
+MIN_CITY_POP = 1_000_000
 
 
 def fetch(cache):
@@ -77,16 +91,28 @@ def emit_rings(geom, lines):
         lines.append("R\t" + " ".join("%.2f %.2f" % p for p in pts))
 
 
+def sub_name(feature):
+    props = feature["properties"]
+    return props.get("name") or props.get("name_en")
+
+
 def main():
     cache = sys.argv[1] if len(sys.argv) > 1 else os.path.join("tools", "cache")
     data = fetch(cache)
+    subdivisions = {}
+    for f in data[FILES[4]]["features"]:
+        if f["properties"]["admin"] in SUBDIVIDE and f["geometry"] is not None and sub_name(f):
+            subdivisions.setdefault(f["properties"]["admin"], []).append(f)
     lines = []
     for f in data[FILES[0]]["features"]:
         p = f["properties"]
         if p["NAME"] == "Antarctica":
             continue
-        lines.append("C\t%s\t%d" % (p["NAME"], max(0, int(p.get("POP_EST") or 0))))
+        lines.append("C\t%s\t%d\t%s" % (p["NAME"], max(0, int(p.get("POP_EST") or 0)), p.get("ADM0_A3") or ""))
         emit_rings(f["geometry"], lines)
+        for sub in sorted(subdivisions.get(p["NAME"], []), key=sub_name):
+            lines.append("S\t%s\t%s" % (sub_name(sub), SUBDIVIDE[p["NAME"]]))
+            emit_rings(sub["geometry"], lines)
     kinds = {"Range/mtn": "M", "Desert": "D", "Tundra": "U"}
     for f in data[FILES[1]]["features"]:
         kind = kinds.get(f["properties"]["FEATURECLA"])
@@ -94,6 +120,23 @@ def main():
             continue
         lines.append("T\t" + kind)
         emit_rings(f["geometry"], lines)
+    for f in data[FILES[2]]["features"]:
+        p = f["properties"]
+        pop = int(p.get("pop_max") or 0)
+        capital = 1 if p.get("adm0cap") == 1 else 0
+        if not capital and pop < MIN_CITY_POP:
+            continue
+        lines.append("P\t%s\t%.3f\t%.3f\t%d\t%d\t%s\t%s" % (p["name"], p["longitude"], p["latitude"], pop, capital,
+                                                           p.get("adm0_a3") or "", p.get("adm0name") or ""))
+    for f in data[FILES[3]]["features"]:
+        geom = f["geometry"]
+        if geom is None or f["properties"].get("featurecla") != "River":
+            continue
+        lines_ = geom["coordinates"] if geom["type"] == "MultiLineString" else [geom["coordinates"]]
+        for line in lines_:
+            pts = simplify([(p[0], p[1]) for p in line], EPS)
+            if len(pts) >= 2:
+                lines.append("V\t" + " ".join("%.2f %.2f" % p for p in pts))
     out = os.path.join("res", "mapgame", "data", "world.txt")
     os.makedirs(os.path.dirname(out), exist_ok=True)
     with open(out, "w", encoding="utf-8", newline="\n") as fh:

@@ -29,6 +29,9 @@ public final class ArmyGroup {
     /** Current front line provinces (for display). */
     public List<Province> front = new ArrayList<>();
     public String status = "";
+    /** Refill and recruit armies automatically until the group has {@link #goal} men. */
+    public boolean reinforce;
+    public int goal;
 
     public ArmyGroup(int id, Country owner) {
         this.id = id;

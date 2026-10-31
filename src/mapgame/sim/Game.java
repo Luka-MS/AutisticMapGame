@@ -14,14 +14,20 @@ import java.util.Random;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
+import mapgame.audio.Synth;
 import mapgame.i18n.I18n;
 import mapgame.model.Army;
 import mapgame.model.ArmyGroup;
+import mapgame.model.ArmyType;
+import mapgame.model.Building;
 import mapgame.model.Country;
+import mapgame.model.Fleet;
 import mapgame.model.MapGenerator;
 import mapgame.model.MapKind;
+import mapgame.model.Policy;
 import mapgame.model.Province;
 import mapgame.model.RealMapGenerator;
+import mapgame.model.TechField;
 import mapgame.model.World;
 
 /** The whole simulation: calendar, wars, armies, economy. */
@@ -41,34 +47,77 @@ public final class Game {
     public final MapKind kind;
     public final long seed;
     public final List<Army> armies = new ArrayList<>();
-    /** The human player's nation; null while choosing (or when running AI-only). */
+    /** The human player's nation; null while choosing (or when running AI-only). In hotseat games: the nation whose turn it is. */
     public Country player;
+    /** All human nations of a hotseat game (empty in a normal game); the AI plays every nation that is not human. */
+    public final List<Country> humans = new ArrayList<>();
+
+    /** True for the player's nation and for every nation of a hotseat player. */
+    public boolean isHuman(Country c) {
+        return c != null && (c == player || humans.contains(c));
+    }
     public int day;
     /** Set whenever ownership/control changes so the renderer can rebuild the map. */
     public boolean mapDirty = true;
     public Consumer<String> logSink = s -> { };
+    /** Chosen at the start: scales incomes (see {@link Difficulty}) and the AI's eagerness to start wars (0 - 100, 50 = normal). */
+    public Difficulty difficulty = Difficulty.NORMAL;
+    public int aggression = 50;
+    /** Provinces where fighting happened recently (value = day of the last fighting); used for the battle markers, not saved. */
+    public final Map<Province, Integer> recentBattles = new HashMap<>();
+    /** Monthly history of all nations for the statistics charts. */
+    public final Stats stats;
+
+    /** Records fighting in a province and forgets old battles. */
+    void noteBattle(Province p) {
+        recentBattles.put(p, day);
+    }
+
+    /** Statistics for the balance tools; not part of a save. */
+    public int warsDeclared, totalWarsDeclared, peaceDeals, eliminations, coalitionWars, alliancesFormed, landings;
 
     final Map<Long, Integer> wars = new HashMap<>();
     final Set<Long> totalWars = new HashSet<>();
     public final List<ArmyGroup> groups = new ArrayList<>();
+    public final List<Fleet> fleets = new ArrayList<>();
+    /** Coastal provinces currently blockaded by an enemy fleet (recomputed every day, not saved). */
+    final Set<Province> blockaded = new HashSet<>();
     int nextGroupId = 1;
     int nextArmyId = 1;
+    int nextFleetId = 1;
 
     public Game(long seed) {
-        this(MapGenerator.generate(seed), seed, MapKind.RANDOM);
+        this(MapGenerator.generate(seed), seed, MapKind.RANDOM, null);
     }
 
     /** Builds a game on the given map type (random or real geography). */
     public static Game create(MapKind kind, long seed) {
-        return kind == MapKind.RANDOM ? new Game(seed) : new Game(RealMapGenerator.generate(kind, seed), seed, kind);
+        return create(kind, seed, null);
     }
 
-    private Game(World world, long seed, MapKind kind) {
+    /** Same, with a scenario (may be null) that changes the start year, nations and alliances; real maps only. */
+    public static Game create(MapKind kind, long seed, Scenario scenario) {
+        if (scenario != null && !scenario.supports(kind)) scenario = null;
+        if (kind == MapKind.RANDOM && scenario == null) return new Game(seed);
+        World w = kind == MapKind.RANDOM ? MapGenerator.generate(seed) : RealMapGenerator.generate(kind, seed);
+        return new Game(w, seed, kind, scenario);
+    }
+
+    /** Id of the scenario this game started from, or null. */
+    public final String scenarioId;
+
+    private Game(World world, long seed, MapKind kind, Scenario scenario) {
         this.world = world;
         this.kind = kind;
         this.seed = seed;
+        this.scenarioId = scenario == null ? null : scenario.id;
         this.rnd = new Random(seed ^ 0x9E3779B97F4A7C15L);
+        if (scenario != null) {
+            scenario.applyToWorld(world);
+            day = (scenario.startYear - 1900) * 360;
+        }
         for (Country c : world.countries) {
+            if (!c.alive) continue;
             c.gold = 300;
             c.manpower = 5000;
             // The starting force must be affordable: one 2000-man army costs 10 gold/month.
@@ -82,6 +131,9 @@ public final class Game {
         }
         mergeArmies();
         world.recomputeLabels();
+        if (scenario != null) scenario.applyToGame(this);
+        stats = new Stats(world.countries.size());
+        stats.record(this);
     }
 
     // ---------------------------------------------------------------- calendar / log
@@ -98,6 +150,50 @@ public final class Game {
         logSink.accept(date() + "  " + msg);
     }
 
+    /** A noteworthy happening for the notification list; {@code where} (may be null) is the place to jump to. */
+    public record Event(int day, String text, Province where) {
+    }
+
+    /** Like {@link #report(String, Province, Country...)} and also plays a sound cue when the player is involved. */
+    public void report(Synth.Cue cue, String msg, Province where, Country... involved) {
+        report(msg, where, involved);
+        for (Country c : involved) {
+            if (c != null && isHuman(c)) {
+                cueSink.accept(cue);
+                return;
+            }
+        }
+    }
+
+    /** Receives the sounds to play (the user interface sets it). */
+    public Consumer<Synth.Cue> cueSink = c -> { };
+
+    public static final int MAX_EVENTS = 300;
+    public final List<Event> events = new ArrayList<>();
+    public Consumer<Event> eventSink = e -> { };
+
+    /** Asks the player how to react to an event; the default always takes the first option. */
+    public interface DecisionHandler {
+        int choose(String title, String text, List<String> options);
+    }
+
+    public DecisionHandler decisions = (title, text, options) -> 0;
+
+    /**
+     * Logs the message and, if the player is one of {@code involved} (or nobody is named: world news),
+     * also files it in the notification list.
+     */
+    public void report(String msg, Province where, Country... involved) {
+        log(msg);
+        boolean relevant = involved.length == 0;
+        for (Country c : involved) if (c != null && isHuman(c)) relevant = true;
+        if (!relevant) return;
+        Event e = new Event(day, msg, where);
+        events.add(e);
+        if (events.size() > MAX_EVENTS) events.remove(0);
+        eventSink.accept(e);
+    }
+
     // ---------------------------------------------------------------- diplomacy
 
     private static long key(Country a, Country b) {
@@ -112,10 +208,41 @@ public final class Game {
         return wars.getOrDefault(key(a, b), day);
     }
 
+    /** Living nations at war with {@code c}, in country order. The lists are cached until the diplomacy changes. */
     public List<Country> enemiesOf(Country c) {
-        List<Country> out = new ArrayList<>();
-        for (Country o : world.countries) if (o.alive && atWar(c, o)) out.add(o);
-        return out;
+        rebuildDiplomacy();
+        return enemyLists.get(c.id);
+    }
+
+    // The lists of enemies and allies per nation are needed all the time by the AI; they are rebuilt only after a change.
+    private int diplomacyVersion, builtVersion = -1;
+    private List<List<Country>> enemyLists, allyLists;
+
+    /** Must be called after wars or alliances were changed directly (the game's own methods do it themselves). */
+    void diplomacyChanged() {
+        diplomacyVersion++;
+    }
+
+    private void rebuildDiplomacy() {
+        if (builtVersion == diplomacyVersion && enemyLists != null && enemyLists.size() == world.countries.size()) return;
+        enemyLists = new ArrayList<>();
+        allyLists = new ArrayList<>();
+        for (int i = 0; i < world.countries.size(); i++) {
+            enemyLists.add(new ArrayList<>());
+            allyLists.add(new ArrayList<>());
+        }
+        for (long k : wars.keySet()) link(enemyLists, k);
+        for (long k : alliances) link(allyLists, k);
+        for (List<Country> l : enemyLists) l.sort(java.util.Comparator.comparingInt(x -> x.id));
+        for (List<Country> l : allyLists) l.sort(java.util.Comparator.comparingInt(x -> x.id));
+        builtVersion = diplomacyVersion;
+    }
+
+    private void link(List<List<Country>> lists, long pairKey) {
+        Country x = world.countries.get((int) (pairKey >> 32)), y = world.countries.get((int) (pairKey & 0xFFFFFFFFL));
+        if (!x.alive || !y.alive) return;
+        lists.get(x.id).add(y);
+        lists.get(y.id).add(x);
     }
 
     public boolean declareWar(Country a, Country b) {
@@ -124,17 +251,250 @@ public final class Game {
 
     /** A total war can never end in peace: only the elimination of one side stops it. */
     public boolean declareWar(Country a, Country b, boolean total) {
-        if (a == b || !a.alive || !b.alive) return false;
+        return declareWar(a, b, total, true);
+    }
+
+    private boolean declareWar(Country a, Country b, boolean total, boolean callAllies) {
+        if (a == b || !a.alive || !b.alive || allied(a, b) || hasPact(a, b)) return false;
         if (atWar(a, b)) {
             if (!total || isTotalWar(a, b)) return false;
             totalWars.add(key(a, b));
-            log(I18n.tr("war.escalated", a.displayName(), b.displayName()));
+            report(Synth.Cue.WAR, I18n.tr("war.escalated", a.displayName(), b.displayName()), null, a, b);
             return true;
         }
         wars.put(key(a, b), day);
-        if (total) totalWars.add(key(a, b));
-        log(I18n.tr(total ? "war.declared.total" : "war.declared", a.displayName(), b.displayName()));
+        diplomacyChanged();
+        warGoals.put(key(a, b), (isHuman(a) ? nextWarGoal : WarGoal.CONQUEST).ordinal());
+        trades.remove(key(a, b));
+        guarantees.remove(directed(a, b));
+        guarantees.remove(directed(b, a));
+        warsDeclared++;
+        if (total) {
+            totalWars.add(key(a, b));
+            totalWarsDeclared++;
+        }
+        report(Synth.Cue.WAR, I18n.tr(total ? "war.declared.total" : "war.declared", a.displayName(), b.displayName()), null, a, b);
+        if (callAllies) {
+            callToArms(a, b);
+            callGuarantors(a, b);
+        }
         return true;
+    }
+
+    /** AI nations pick their war goal after declaring. */
+    void setWarGoal(Country a, Country b, WarGoal goal) {
+        if (atWar(a, b)) warGoals.put(key(a, b), goal.ordinal());
+    }
+
+    // ---------------------------------------------------------------- alliances
+
+    /** Most allies a nation can have at the same time. */
+    public static final int MAX_ALLIES = 3;
+    /** Chance that an AI ally of the defender / of the aggressor joins a new war. */
+    private static final double DEFENDER_ALLY_JOINS = 0.75, AGGRESSOR_ALLY_JOINS = 0.35;
+
+    final Set<Long> alliances = new HashSet<>();
+
+    public boolean allied(Country a, Country b) {
+        return a != null && b != null && a != b && alliances.contains(key(a, b));
+    }
+
+    public List<Country> alliesOf(Country c) {
+        rebuildDiplomacy();
+        return allyLists.get(c.id);
+    }
+
+    /** Own land or land of an ally: armies move and are supplied there. */
+    public boolean friendly(Country c, Country other) {
+        return other == c || allied(c, other);
+    }
+
+    /** Allies of the attacked nation are called to arms; AI nations join most of the time, the player is notified. */
+    private void callToArms(Country aggressor, Country victim) {
+        for (Country ally : alliesOf(victim)) {
+            if (ally == aggressor || atWar(ally, aggressor) || allied(ally, aggressor)) continue;
+            if (isHuman(ally)) {
+                report(I18n.tr("alliance.callarms", victim.displayName(), aggressor.displayName()), null, ally);
+            } else if (rnd.nextDouble() < DEFENDER_ALLY_JOINS) {
+                declareWar(ally, aggressor, false, false);
+            }
+        }
+        for (Country ally : alliesOf(aggressor)) {
+            if (ally == victim || atWar(ally, victim) || allied(ally, victim) || isHuman(ally)) continue;
+            if (rnd.nextDouble() < AGGRESSOR_ALLY_JOINS) declareWar(ally, victim, false, false);
+        }
+    }
+
+    /** Alliance proposal. Returns a message describing the outcome. */
+    public String proposeAlliance(Country from, Country to) {
+        if (allied(from, to)) return I18n.tr("alliance.already", to.displayName());
+        if (atWar(from, to)) return I18n.tr("alliance.atwar", to.displayName());
+        if (alliesOf(from).size() >= MAX_ALLIES) return I18n.tr("alliance.full.us");
+        if (alliesOf(to).size() >= MAX_ALLIES) return I18n.tr("alliance.full", to.displayName());
+        if (!wouldAcceptAlliance(from, to)) return I18n.tr("alliance.refuses", to.displayName());
+        makeAlliance(from, to);
+        return I18n.tr("alliance.accepts", to.displayName());
+    }
+
+    /** The other side agrees to join against a common enemy or a hegemon, or when the proposer is the stronger one. */
+    boolean wouldAcceptAlliance(Country from, Country to) {
+        return sharedInterest(from, to) || strength(from) > strength(to) * 1.2 && to.provinces.size() <= from.provinces.size();
+    }
+
+    /** Both fight the same enemy, or both border an over-mighty nation. */
+    boolean sharedInterest(Country a, Country b) {
+        for (Country e : enemiesOf(a)) if (atWar(b, e)) return true;
+        Country h = hegemon();
+        return h != null && h != a && h != b && bordersCountry(a, h) && bordersCountry(b, h);
+    }
+
+    boolean bordersCountry(Country a, Country b) {
+        for (Province p : a.provinces) for (Province q : p.neighbors) if (q.owner == b) return true;
+        return false;
+    }
+
+    void makeAlliance(Country a, Country b) {
+        if (!alliances.add(key(a, b))) return;
+        diplomacyChanged();
+        alliancesFormed++;
+        report(I18n.tr("alliance.formed", a.displayName(), b.displayName()), null, a, b);
+    }
+
+    public void breakAlliance(Country a, Country b) {
+        if (!alliances.remove(key(a, b))) return;
+        diplomacyChanged();
+        report(I18n.tr("alliance.broken", a.displayName(), b.displayName()), null, a, b);
+        evictArmies();
+    }
+
+    // ---------------------------------------------------------------- pacts, guarantees, trade, war goals
+
+    public static final int PACT_DAYS = 3600;
+    public static final int MAX_TRADES = 3;
+    /** Share of the loser's gold a tribute war takes. */
+    public static final double TRIBUTE_SHARE = 0.30;
+
+    public enum WarGoal {
+        /** The usual war: occupied land changes hands in the peace deal. */
+        CONQUEST,
+        /** No land changes hands, the loser pays a share of its gold. */
+        TRIBUTE;
+
+        public String label() {
+            return I18n.tr("goal." + name());
+        }
+    }
+
+    /** Non-aggression pacts: pair -> day the pact runs out. */
+    final Map<Long, Integer> pacts = new HashMap<>();
+    /** Guarantees: (guarantor id << 32 | guaranteed id). */
+    final Set<Long> guarantees = new HashSet<>();
+    final Set<Long> trades = new HashSet<>();
+    /** War goal per war: pair -> goal ordinal. */
+    final Map<Long, Integer> warGoals = new HashMap<>();
+    /** The goal the player's next declaration of war uses (not saved). */
+    public WarGoal nextWarGoal = WarGoal.CONQUEST;
+
+    private static long directed(Country from, Country to) {
+        return ((long) from.id << 32) | to.id;
+    }
+
+    public boolean hasPact(Country a, Country b) {
+        Integer until = pacts.get(key(a, b));
+        return until != null && day < until;
+    }
+
+    /** Number of running non-aggression pacts of a nation. */
+    public int pactsOf(Country c) {
+        int n = 0;
+        for (Map.Entry<Long, Integer> e : pacts.entrySet()) {
+            long k = e.getKey();
+            if (day < e.getValue() && ((k >> 32) == c.id || (k & 0xFFFFFFFFL) == c.id)) n++;
+        }
+        return n;
+    }
+
+    public int pactEnds(Country a, Country b) {
+        return pacts.getOrDefault(key(a, b), 0);
+    }
+
+    public boolean guarantees(Country guarantor, Country guaranteed) {
+        return guarantees.contains(directed(guarantor, guaranteed));
+    }
+
+    public boolean hasTrade(Country a, Country b) {
+        return trades.contains(key(a, b));
+    }
+
+    public int tradesOf(Country c) {
+        int n = 0;
+        for (Country o : world.countries) if (o.alive && hasTrade(c, o)) n++;
+        return n;
+    }
+
+    public WarGoal warGoal(Country a, Country b) {
+        Integer g = warGoals.get(key(a, b));
+        return g == null ? WarGoal.CONQUEST : WarGoal.values()[g];
+    }
+
+    /** Proposes a non-aggression pact for ten years. */
+    public String proposePact(Country from, Country to) {
+        if (atWar(from, to)) return I18n.tr("pact.atwar", to.displayName());
+        if (hasPact(from, to)) return I18n.tr("pact.already", to.displayName());
+        if (strength(to) > strength(from) * 2 && bordersCountry(from, to)) return I18n.tr("pact.refuses", to.displayName());
+        pacts.put(key(from, to), day + PACT_DAYS);
+        report(I18n.tr("pact.signed", from.displayName(), to.displayName()), null, from, to);
+        return I18n.tr("pact.accepts", to.displayName());
+    }
+
+    public void cancelPact(Country a, Country b) {
+        if (pacts.remove(key(a, b)) != null) report(I18n.tr("pact.cancelled", a.displayName(), b.displayName()), null, a, b);
+    }
+
+    /** One-sided: the guarantor promises to come to the aid of the guaranteed nation. */
+    public boolean guarantee(Country guarantor, Country guaranteed) {
+        if (guarantor == guaranteed || !guarantor.alive || !guaranteed.alive || atWar(guarantor, guaranteed)) return false;
+        if (!guarantees.add(directed(guarantor, guaranteed))) return false;
+        report(I18n.tr("guarantee.given", guarantor.displayName(), guaranteed.displayName()), null, guarantor, guaranteed);
+        return true;
+    }
+
+    public void revokeGuarantee(Country guarantor, Country guaranteed) {
+        if (guarantees.remove(directed(guarantor, guaranteed))) {
+            report(I18n.tr("guarantee.revoked", guarantor.displayName(), guaranteed.displayName()), null, guarantor, guaranteed);
+        }
+    }
+
+    /** Proposes a trade agreement: both sides earn 6% more gold per agreement (at most three). */
+    public String proposeTrade(Country from, Country to) {
+        if (atWar(from, to)) return I18n.tr("trade.atwar", to.displayName());
+        if (hasTrade(from, to)) return I18n.tr("trade.already", to.displayName());
+        if (tradesOf(from) >= MAX_TRADES) return I18n.tr("trade.full.us");
+        if (tradesOf(to) >= MAX_TRADES) return I18n.tr("trade.full", to.displayName());
+        makeTrade(from, to);
+        return I18n.tr("trade.accepts", to.displayName());
+    }
+
+    void makeTrade(Country a, Country b) {
+        if (!trades.add(key(a, b))) return;
+        report(I18n.tr("trade.signed", a.displayName(), b.displayName()), null, a, b);
+    }
+
+    public void cancelTrade(Country a, Country b) {
+        if (trades.remove(key(a, b))) report(I18n.tr("trade.cancelled", a.displayName(), b.displayName()), null, a, b);
+    }
+
+    /** Guarantors of the victim join like allies do. */
+    private void callGuarantors(Country aggressor, Country victim) {
+        for (Country o : world.countries) {
+            if (!o.alive || o == aggressor || !guarantees(o, victim) || atWar(o, aggressor) || allied(o, aggressor) || isHuman(o)) continue;
+            if (rnd.nextDouble() < 0.6) declareWar(o, aggressor, false, false);
+        }
+        for (Country h : world.countries) {
+            if (h.alive && isHuman(h) && h != aggressor && guarantees(h, victim) && !atWar(h, aggressor)) {
+                report(I18n.tr("guarantee.callarms", victim.displayName(), aggressor.displayName()), null, h);
+            }
+        }
     }
 
     public boolean isTotalWar(Country a, Country b) {
@@ -156,15 +516,48 @@ public final class Game {
     public void makePeace(Country a, Country b) {
         if (!atWar(a, b) || isTotalWar(a, b)) return;
         int ownedA = a.provinces.size(), ownedB = b.provinces.size();
-        int moved = transferOnPeace(a, b, ownedB) + transferOnPeace(b, a, ownedA);
+        int moved = 0, paid = 0;
+        Country payer = null;
+        if (warGoal(a, b) == WarGoal.TRIBUTE) {
+            // No land changes hands: occupied provinces go back and the loser pays a share of its gold.
+            for (Province p : b.provinces) if (p.controller == a) p.controller = b;
+            for (Province p : a.provinces) if (p.controller == b) p.controller = a;
+            payer = warScore(a, b) >= 0 ? b : a;
+            Country receiver = payer == a ? b : a;
+            paid = (int) (Math.max(0, payer.gold) * TRIBUTE_SHARE);
+            payer.gold -= paid;
+            receiver.gold += paid;
+        } else {
+            moved = transferOnPeace(a, b, ownedB) + transferOnPeace(b, a, ownedA);
+        }
         wars.remove(key(a, b));
+        diplomacyChanged();
+        warGoals.remove(key(a, b));
+        peaceDeals++;
+        relocateCapital(a);
+        relocateCapital(b);
         a.truceUntil = Math.max(a.truceUntil, day + TRUCE_DAYS);
         b.truceUntil = Math.max(b.truceUntil, day + TRUCE_DAYS);
-        log(I18n.tr("peace.made", a.displayName(), b.displayName()) + (moved == 0 ? "" : " " + I18n.tr("peace.moved", moved)));
+        String outcome = payer != null ? " " + I18n.tr("peace.tribute", payer.displayName(), paid)
+                : moved == 0 ? "" : " " + I18n.tr("peace.moved", moved);
+        report(Synth.Cue.PEACE, I18n.tr("peace.made", a.displayName(), b.displayName()) + outcome, null, a, b);
         evictArmies();
         checkElimination(a);
         checkElimination(b);
         mapDirty = true;
+    }
+
+    /** A nation that lost its capital in a peace deal moves the capital to its most populous province. */
+    private void relocateCapital(Country c) {
+        if (!c.alive || c.capital == null || c.capital.owner == c) return;
+        Province best = null;
+        for (Province p : c.provinces) {
+            if (best == null || p.population * p.wealth() > best.population * best.wealth()) best = p;
+        }
+        if (best != null) {
+            c.capital = best;
+            report(I18n.tr("capital.moved", c.displayName(), best.name), best, c);
+        }
     }
 
     private int transferOnPeace(Country winner, Country loser, int loserOwned) {
@@ -178,6 +571,7 @@ public final class Game {
         for (Province p : held) {
             if (moved < quota) {
                 world.setOwner(p, winner);
+                p.conqueredDay = day;
                 moved++;
             } else {
                 p.controller = loser;
@@ -212,6 +606,7 @@ public final class Game {
     public boolean allowed(Country c, Province p) {
         if (!p.isLand()) return false;
         if (p.owner == null || p.owner == c || p.controller == c) return true;
+        if (allied(c, p.owner) || allied(c, p.controller)) return true;
         return atWar(c, p.owner) || atWar(c, p.controller);
     }
 
@@ -227,49 +622,146 @@ public final class Game {
         return s;
     }
 
+    public List<Fleet> fleetsOf(Country c) {
+        List<Fleet> out = new ArrayList<>();
+        for (Fleet f : fleets) if (!f.dead && f.owner == c) out.add(f);
+        return out;
+    }
+
+    public long navalStrength(Country c) {
+        long s = 0;
+        for (Fleet f : fleets) if (!f.dead && f.owner == c) s += f.strength;
+        return s;
+    }
+
+    public boolean isBlockaded(Province p) {
+        return blockaded.contains(p);
+    }
+
     public boolean isEngaged(Army a) {
+        if (a.fleet != null) return false;
         for (Army o : armies) {
-            if (o != a && !o.dead && o.location == a.location && atWar(a.owner, o.owner)) return true;
+            if (o != a && !o.dead && o.fleet == null && o.location == a.location && atWar(a.owner, o.owner)) return true;
         }
         return false;
     }
 
     public Map<Province, Integer> enemyStrengthByProvince(Country c) {
         Map<Province, Integer> m = new HashMap<>();
-        for (Army a : armies) if (atWar(c, a.owner)) m.merge(a.location, a.strength, Integer::sum);
+        for (Army a : armies) if (a.fleet == null && atWar(c, a.owner)) m.merge(a.location, a.strength, Integer::sum);
         return m;
     }
 
     public double monthlyIncome(Country c) {
         double inc = 0;
-        for (Province p : c.provinces) if (p.controller == c) inc += p.income();
-        return inc;
+        for (Province p : c.provinces) {
+            if (p.controller == c) inc += p.income(day) * (blockaded.contains(p) ? 1 - Navy.BLOCKADE_LOSS : 1);
+        }
+        double bonus = (day < c.incomeBonusUntil ? 1 + c.incomeBonus : 1) * (1 + 0.06 * tradesOf(c));
+        double skill = isHuman(c) ? difficulty.player : difficulty.ai;
+        return inc * (1 + 0.08 * c.techLevel(TechField.ECONOMY)) * c.taxes.gold * c.conscription.gold * bonus * skill;
     }
 
     public double monthlyUpkeep(Country c) {
-        return strength(c) * UPKEEP_PER_MAN;
+        double u = 0;
+        for (Army a : armies) if (a.owner == c) u += a.strength * UPKEEP_PER_MAN * a.type.upkeepFactor;
+        for (Fleet f : fleets) if (!f.dead && f.owner == c) u += f.strength * UPKEEP_PER_MAN * Navy.UPKEEP_FACTOR;
+        return u * (1 - 0.04 * c.techLevel(TechField.ADMIN));
     }
 
     public int monthlyManpower(Country c) {
         int mp = 0;
-        for (Province p : c.provinces) if (p.controller == c) mp += p.manpowerGain();
-        return mp;
+        for (Province p : c.provinces) if (p.controller == c) mp += p.manpowerGain(day);
+        return (int) (mp * (1 + 0.1 * c.techLevel(TechField.ADMIN)) * c.taxes.manpower * c.conscription.manpower);
+    }
+
+    /** Days until the nation may change its policies again (0 = now). */
+    public int policyCooldown(Country c) {
+        return Math.max(0, c.policyChangedDay + Policy.CHANGE_DELAY - day);
+    }
+
+    /** Changes the policies unless they were changed recently; unchanged values never start the cooldown. */
+    public boolean setPolicies(Country c, Policy.Taxes taxes, Policy.Conscription conscription) {
+        if (taxes == c.taxes && conscription == c.conscription) return true;
+        if (policyCooldown(c) > 0) return false;
+        c.taxes = taxes;
+        c.conscription = conscription;
+        c.policyChangedDay = day;
+        return true;
+    }
+
+    // ---------------------------------------------------------------- research
+
+    /** Research points a nation earns per month: bigger nations and administrative progress research faster. */
+    public double researchRate(Country c) {
+        return Math.min(5.0, 1 + c.provinces.size() * 0.08) * (1 + 0.1 * c.techLevel(TechField.ADMIN));
+    }
+
+    /** Points still missing for the current project. */
+    public int researchCost(Country c, TechField f) {
+        return TechField.cost(c.techLevel(f));
+    }
+
+    /** Starts researching {@code f}; switching to another field discards the progress made so far. */
+    public boolean startResearch(Country c, TechField f) {
+        if (f == null || c.techLevel(f) >= TechField.MAX_LEVEL) return false;
+        if (c.researching != f) c.researchProgress = 0;
+        c.researching = f;
+        return true;
+    }
+
+    private void researchTick(Country c) {
+        if (c.researching == null) {
+            if (!isHuman(c)) aiPickResearch(c);
+            if (c.researching == null) return;
+        }
+        c.researchProgress += researchRate(c);
+        TechField f = c.researching;
+        if (c.researchProgress < researchCost(c, f)) return;
+        c.tech[f.ordinal()]++;
+        c.researchProgress = 0;
+        c.researching = null;
+        report(Synth.Cue.GOOD, I18n.tr("tech.done", c.displayName(), f.label(), c.techLevel(f)), null, c);
+    }
+
+    /** AI research: military first while at war, otherwise economy and administration. */
+    private void aiPickResearch(Country c) {
+        boolean atWar = !enemiesOf(c).isEmpty();
+        TechField[] order = atWar
+                ? new TechField[] {TechField.MILITARY, TechField.ECONOMY, TechField.ADMIN}
+                : new TechField[] {TechField.ECONOMY, TechField.ADMIN, TechField.MILITARY};
+        TechField best = null;
+        for (TechField f : order) {
+            if (c.techLevel(f) >= TechField.MAX_LEVEL) continue;
+            if (best == null || c.techLevel(f) + 1 < c.techLevel(best)) best = f;
+        }
+        if (best != null) startResearch(c, best);
     }
 
     // ---------------------------------------------------------------- orders
 
     public Army recruit(Country c, Province p) {
+        return recruit(c, p, ArmyType.INFANTRY);
+    }
+
+    /** Gold a fresh army of this type costs. */
+    public static int recruitGold(ArmyType type) {
+        return (int) Math.ceil(RECRUIT_GOLD * type.goldFactor);
+    }
+
+    public Army recruit(Country c, Province p, ArmyType type) {
         if (!p.isLand() || p.owner != c || p.controller != c) return null;
-        if (c.gold < RECRUIT_GOLD || c.manpower < RECRUIT_MEN) return null;
-        c.gold -= RECRUIT_GOLD;
+        int gold = recruitGold(type);
+        if (c.gold < gold || c.manpower < RECRUIT_MEN) return null;
+        c.gold -= gold;
         c.manpower -= RECRUIT_MEN;
-        Army a = new Army(nextArmyId++, c, p, RECRUIT_MEN);
+        Army a = new Army(nextArmyId++, c, p, RECRUIT_MEN, type);
         armies.add(a);
         return a;
     }
 
     public boolean canSplit(Army a) {
-        return a != null && !a.dead && a.progress == 0 && a.strength >= MIN_SPLIT;
+        return a != null && !a.dead && a.fleet == null && a.progress == 0 && a.strength >= MIN_SPLIT;
     }
 
     /** Splits off half of the army into a new army in the same province; returns it or null. */
@@ -277,7 +769,9 @@ public final class Game {
         if (!canSplit(a)) return null;
         int half = a.strength / 2;
         a.strength -= half;
-        Army n = new Army(nextArmyId++, a.owner, a.location, half);
+        Army n = new Army(nextArmyId++, a.owner, a.location, half, a.type);
+        n.experience = a.experience;
+        n.morale = a.morale;
         armies.add(n);
         if (a.group != null) assignToGroup(a.group, n);
         return n;
@@ -291,13 +785,13 @@ public final class Game {
         return n;
     }
 
-    /** Merges all idle friendly armies in the same province into {@code a}. */
+    /** Merges all idle friendly armies of the same type in the same province into {@code a}. */
     public int mergeStack(Army a) {
         int merged = 0;
         if (a == null || a.dead || a.progress != 0) return 0;
         for (Army o : armies) {
             if (!isMergeable(a, o)) continue;
-            a.strength += o.strength;
+            a.absorb(o);
             if (a.group == null && o.group != null) assignToGroup(o.group, a);
             o.dead = true;
             merged++;
@@ -307,7 +801,8 @@ public final class Game {
     }
 
     private static boolean isMergeable(Army a, Army o) {
-        return o != a && !o.dead && o.owner == a.owner && o.location == a.location && o.path.isEmpty();
+        return o != a && !o.dead && a.fleet == null && o.fleet == null && o.owner == a.owner && o.type == a.type
+                && o.location == a.location && o.path.isEmpty();
     }
 
     // ---------------------------------------------------------------- army groups
@@ -339,6 +834,71 @@ public final class Game {
         a.group = null;
     }
 
+    /** Gold a single refilled soldier costs: the same price as in a fresh recruit. */
+    public static final double GOLD_PER_MAN = (double) RECRUIT_GOLD / RECRUIT_MEN;
+    /** Most men a group tops up in one army per planning round. */
+    public static final int REFILL_STEP = 500;
+    /** Gold that automatic reinforcement leaves untouched so upkeep can still be paid. */
+    public static final int RESERVE_GOLD = 50;
+
+    /**
+     * Brings a group with {@link ArmyGroup#reinforce} back towards its {@link ArmyGroup#goal}: armies standing in
+     * own territory are refilled from the manpower pool, and when that is not enough a new army is raised at home.
+     */
+    void reinforce(ArmyGroup grp) {
+        Country c = grp.owner;
+        if (!c.alive) return;
+        int deficit = grp.goal - grp.strength();
+        for (Army a : grp.armies) {
+            if (deficit <= 0) break;
+            if (a.dead || a.location.controller != c || a.location.owner != c || isEngaged(a)) continue;
+            int rate = Math.max(1, (int) Math.ceil(GOLD_PER_MAN * a.type.goldFactor * 1000));
+            int affordable = (int) (Math.max(0, c.gold - RESERVE_GOLD) * 1000 / rate);
+            int add = Math.min(Math.min(REFILL_STEP, deficit), Math.min(c.manpower, affordable));
+            if (add <= 0) return;
+            a.addMen(add);
+            c.manpower -= add;
+            c.gold -= add * rate / 1000.0;
+            deficit -= add;
+        }
+        if (deficit < RECRUIT_MEN || c.gold < RECRUIT_GOLD + RESERVE_GOLD || c.manpower < RECRUIT_MEN) return;
+        Province site = reinforcementSite(grp);
+        if (site == null) return;
+        Army n = recruit(c, site);
+        if (n != null) assignToGroup(grp, n);
+    }
+
+    /** The own, unoccupied province closest to the group's front (or its armies) where new troops are raised. */
+    private Province reinforcementSite(ArmyGroup grp) {
+        double fx = 0, fy = 0;
+        int n = 0;
+        List<Province> anchors = grp.front.isEmpty() ? List.of() : grp.front;
+        for (Province p : anchors) {
+            fx += p.x;
+            fy += p.y;
+            n++;
+        }
+        if (n == 0) {
+            for (Army a : grp.armies) {
+                if (a.dead) continue;
+                fx += a.location.x;
+                fy += a.location.y;
+                n++;
+            }
+        }
+        Province best = null;
+        double bd = Double.MAX_VALUE;
+        for (Province p : grp.owner.provinces) {
+            if (p.controller != grp.owner || !p.isLand()) continue;
+            double d = n == 0 ? 0 : (p.x - fx / n) * (p.x - fx / n) + (p.y - fy / n) * (p.y - fy / n);
+            if (d < bd) {
+                bd = d;
+                best = p;
+            }
+        }
+        return best;
+    }
+
     /** Re-plans a group right away instead of waiting for the next planning tick. */
     public void planGroup(ArmyGroup g) {
         FrontPlanner.update(this, g);
@@ -346,7 +906,7 @@ public final class Game {
 
     /** Manual order from the player; takes the army out of its army group. */
     public boolean orderMove(Army a, Province dest) {
-        if (a == null || a.dead || dest == null || !dest.isLand()) return false;
+        if (a == null || a.dead || a.fleet != null || dest == null || !dest.isLand()) return false;
         if (!moveArmy(a, dest)) return false;
         if (a.group != null) {
             log(I18n.tr("army.removed", a.owner.displayName(), a.group.displayName()));
@@ -356,6 +916,7 @@ public final class Game {
     }
 
     boolean moveArmy(Army a, Province dest) {
+        if (a.fleet != null) return false;
         if (dest == a.location) {
             a.clearPath();
             return true;
@@ -397,29 +958,182 @@ public final class Game {
         return null;
     }
 
+    // ---------------------------------------------------------------- buildings and unrest
+
+    /** Unrest gained per day while an enemy holds a province without a garrison, and lost per day with one. */
+    public static final double UNREST_RISE = 0.4, UNREST_GARRISON = -0.3, UNREST_CALM = 1.0;
+
+    /** Gold the next level of {@code b} costs in {@code p}, or -1 when it cannot be built. */
+    public int buildCost(Province p, Building b) {
+        if (p == null || !p.isLand() || p.owner == null || p.building != null) return -1;
+        int level = p.level(b);
+        return level >= b.maxLevel ? -1 : b.cost(level);
+    }
+
+    /** Starts construction; the owner must hold the province. */
+    public boolean build(Country c, Province p, Building b) {
+        int cost = buildCost(p, b);
+        if (cost < 0 || p.owner != c || p.controller != c || c.gold < cost) return false;
+        c.gold -= cost;
+        p.building = b;
+        p.buildDone = day + Building.BUILD_DAYS;
+        return true;
+    }
+
+    private void updateProvinces() {
+        for (Province p : world.provinces) {
+            if (p.owner == null) continue;
+            if (p.building != null && day >= p.buildDone) {
+                p.buildings[p.building.ordinal()]++;
+                if (isHuman(p.owner)) report(Synth.Cue.GOOD, I18n.tr("building.done", p.building.label(), p.name), p, p.owner);
+                p.building = null;
+            }
+            if (p.controller == p.owner) {
+                if (p.unrest > 0) p.unrest = Math.max(0, p.unrest - UNREST_CALM);
+                continue;
+            }
+            boolean garrison = false;
+            for (Army a : armies) {
+                if (!a.dead && a.location == p && a.owner == p.controller) {
+                    garrison = true;
+                    break;
+                }
+            }
+            p.unrest = Math.max(0, Math.min(100, p.unrest + (garrison ? UNREST_GARRISON : UNREST_RISE)));
+            if (p.unrest >= 100) {
+                Country holder = p.controller;
+                p.controller = p.owner;
+                p.unrest = 0;
+                mapDirty = true;
+                report(isHuman(p.owner) ? Synth.Cue.GOOD : Synth.Cue.BAD, I18n.tr("rebels.free", p.name, p.owner.displayName(), holder.displayName()), p, p.owner, holder);
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------- fog of war
+
+    /** When set, the player only sees foreign armies near his own land and armies (see {@link #visibleTo}). */
+    public boolean fogOfWar;
+
+    /**
+     * Provinces a nation can currently see: its own and allied land, its own and allied armies, and everything
+     * one province further (two for cavalry).
+     */
+    public boolean[] visibleTo(Country c) {
+        boolean[] vis = new boolean[world.provinces.size()];
+        for (Province p : world.provinces) {
+            if (friendly(c, p.controller) && p.controller != null || friendly(c, p.owner) && p.owner != null) reveal(p, 1, vis);
+        }
+        for (Army a : armies) {
+            if (!a.dead && friendly(c, a.owner)) reveal(a.location, a.type == ArmyType.CAVALRY ? 2 : 1, vis);
+        }
+        for (Fleet f : fleets) {
+            if (!f.dead && friendly(c, f.owner)) reveal(f.location, 2, vis);
+        }
+        return vis;
+    }
+
+    private static void reveal(Province p, int radius, boolean[] vis) {
+        vis[p.id] = true;
+        if (radius == 0) return;
+        for (Province q : p.neighbors) reveal(q, radius - 1, vis);
+    }
+
+    // ---------------------------------------------------------------- supply and attrition
+
+    /** Farthest distance (in provinces) from own land that still counts in the supply calculation. */
+    public static final int MAX_SUPPLY_DEPTH = 4;
+    /** Armies larger than this lose extra men in the field. */
+    public static final int STACK_FREE = 4000;
+
+    /**
+     * How many provinces an army is away from land its own nation controls: 0 = standing on it, 1 = next to it (fully
+     * supplied), up to {@link #MAX_SUPPLY_DEPTH} + 1 when cut off.
+     */
+    public int supplyDepth(Army a) {
+        Country c = a.owner;
+        if (friendly(c, a.location.controller)) return 0;
+        Set<Province> seen = new HashSet<>();
+        List<Province> frontier = new ArrayList<>();
+        frontier.add(a.location);
+        seen.add(a.location);
+        for (int depth = 1; depth <= MAX_SUPPLY_DEPTH; depth++) {
+            List<Province> next = new ArrayList<>();
+            for (Province p : frontier) {
+                for (Province q : p.neighbors) {
+                    if (!q.isLand() || !seen.add(q)) continue;
+                    if (friendly(c, q.controller)) return depth;
+                    next.add(q);
+                }
+            }
+            frontier = next;
+        }
+        return MAX_SUPPLY_DEPTH + 1;
+    }
+
+    /** True in the cold half of the year at high latitudes. */
+    public boolean isWinterAt(Province p) {
+        int month = (day % 360) / 30;
+        double lat = p.lat();
+        return lat > 35 && (month == 11 || month <= 1) || lat < -35 && month >= 5 && month <= 7;
+    }
+
+    /**
+     * Share of its men an army loses per 5 days: none at home or right behind its own border, then growing with the
+     * distance from own land, the terrain, the size of the stack and winter.
+     */
+    public double attritionRate(Army a) {
+        int depth = supplyDepth(a);
+        if (depth <= 1) return 0;
+        double distance = depth == 2 ? 1.0 : depth == 3 ? 1.5 : 2.5;
+        double stack = 1 + Math.max(0, a.strength - STACK_FREE) / 8000.0;
+        double winter = isWinterAt(a.location) ? 1.6 : 1.0;
+        return a.location.terrain.attrition * distance * stack * winter;
+    }
+
+    private void applyAttrition() {
+        for (Army a : armies) {
+            if (a.dead || a.fleet != null) continue;
+            int loss = (int) Math.round(a.strength * attritionRate(a));
+            if (loss <= 0) continue;
+            a.strength -= loss;
+            if (a.strength < 100) {
+                a.dead = true;
+                if (isHuman(a.owner)) report(I18n.tr("army.starved", a.location.name), a.location, a.owner);
+            }
+        }
+    }
+
     // ---------------------------------------------------------------- simulation
 
     public void tickDay() {
         day++;
         moveArmies();
+        Navy.tick(this);
         resolveCombat();
         mergeArmies();
         resolveOccupation();
+        if (day % 5 == 0) applyAttrition();
+        updateProvinces();
         if (day % 3 == 0) {
-            for (ArmyGroup grp : new ArrayList<>(groups)) FrontPlanner.update(this, grp);
+            for (ArmyGroup grp : new ArrayList<>(groups)) {
+                if (grp.reinforce) reinforce(grp);
+                FrontPlanner.update(this, grp);
+            }
         }
         if (day % 5 == 0) {
             for (Country c : new ArrayList<>(world.countries)) {
-                if (c.alive && c != player) Ai.think(this, c);
+                if (c.alive && !isHuman(c)) Ai.think(this, c);
             }
         }
         if (day % 30 == 0) monthly();
         armies.removeIf(a -> a.dead);
+        if (day % 10 == 0) recentBattles.values().removeIf(d -> day - d > 5);
     }
 
     private void moveArmies() {
         for (Army a : armies) {
-            if (a.dead) continue;
+            if (a.dead || a.fleet != null) continue;
             a.daysHere++;
             if (a.path.isEmpty()) {
                 a.progress = 0;
@@ -431,7 +1145,7 @@ public final class Game {
                 a.clearPath();
                 continue;
             }
-            a.progress += 1;
+            a.progress += a.type.speed;
             if (a.progress >= next.travelDays(a.location)) {
                 a.moveTo(next);
                 a.path.poll();
@@ -442,29 +1156,56 @@ public final class Game {
 
     private void resolveCombat() {
         Map<Province, List<Army>> byProvince = new LinkedHashMap<>();
-        for (Army a : armies) if (!a.dead) byProvince.computeIfAbsent(a.location, k -> new ArrayList<>()).add(a);
+        for (Army a : armies) if (!a.dead && a.fleet == null) byProvince.computeIfAbsent(a.location, k -> new ArrayList<>()).add(a);
         List<Army> broken = new ArrayList<>();
+        Set<Army> fought = new HashSet<>();
         for (Map.Entry<Province, List<Army>> e : byProvince.entrySet()) {
             List<Army> list = e.getValue();
             if (list.size() < 2) continue;
             Province prov = e.getKey();
             double[] dmg = new double[list.size()];
             for (int i = 0; i < list.size(); i++) {
+                Army target = list.get(i);
+                double vulnerability = target.type.vulnerability * target.toughness();
+                // Guns standing next to friendly foot soldiers are screened.
+                if (target.type == ArmyType.ARTILLERY && screened(list, target)) vulnerability = target.toughness();
                 for (int j = 0; j < list.size(); j++) {
-                    if (i == j || !atWar(list.get(i).owner, list.get(j).owner)) continue;
-                    double d = list.get(j).strength * 0.04 * (0.8 + 0.4 * rnd.nextDouble());
-                    if (list.get(i).owner == prov.controller) d /= prov.terrain.defense;
-                    dmg[i] += d;
+                    Army striker = list.get(j);
+                    if (i == j || !atWar(target.owner, striker.owner)) continue;
+                    double d = striker.strength * 0.04 * (0.8 + 0.4 * rnd.nextDouble());
+                    d *= striker.type.attackOn(prov.terrain) * striker.attackBonus();
+                    if (target.owner == prov.controller) d /= prov.terrain.defense * (1 + 0.15 * prov.level(Building.FORT));
+                    dmg[i] += d * vulnerability;
                 }
             }
             for (int i = 0; i < list.size(); i++) {
                 if (dmg[i] <= 0) continue;
                 Army a = list.get(i);
+                int before = a.strength;
+                noteBattle(prov);
                 a.strength -= Math.max(1, (int) dmg[i]);
-                if (a.strength < 100) broken.add(a);
+                a.experience = Math.min(Army.MAX_EXPERIENCE, a.experience + EXPERIENCE_PER_BATTLE_DAY);
+                // Morale suffers with the share of the army lost; a good general keeps the men together.
+                double shock = Math.min(15, 150.0 * (before - a.strength) / Math.max(1, before)) * (1 - 0.1 * a.generalSkill());
+                a.morale = Math.max(0, a.morale - shock);
+                fought.add(a);
+                if (a.strength < 100 || a.morale <= Army.BREAK_MORALE) broken.add(a);
             }
         }
+        for (Army a : armies) {
+            if (a.dead || fought.contains(a) || a.morale >= 100) continue;
+            double rest = a.location.controller == a.owner ? 3 : 1.5;
+            a.morale = Math.min(100, a.morale + rest + 0.25 * a.generalSkill());
+        }
         for (Army a : broken) retreat(a);
+    }
+
+    /** Experience points an army gains per day of fighting. */
+    public static final double EXPERIENCE_PER_BATTLE_DAY = 1.0;
+
+    private static boolean screened(List<Army> stack, Army gun) {
+        for (Army o : stack) if (o != gun && o.owner == gun.owner && o.type == ArmyType.INFANTRY) return true;
+        return false;
     }
 
     private void retreat(Army a) {
@@ -473,19 +1214,20 @@ public final class Game {
             if (!allowed(a.owner, q) || hostileArmyAt(a.owner, q)) continue;
             if (best == null || q.controller == a.owner) best = q;
         }
-        boolean playerInvolved = a.owner == player;
+        boolean playerInvolved = isHuman(a.owner);
         if (best == null || a.strength <= 0) {
             a.dead = true;
-            if (playerInvolved) log(I18n.tr("army.destroyed", a.location.name));
+            if (playerInvolved) report(Synth.Cue.BAD, I18n.tr("army.destroyed", a.location.name), a.location, a.owner);
         } else {
-            if (playerInvolved) log(I18n.tr("army.routed", a.location.name));
+            if (playerInvolved) report(Synth.Cue.BAD, I18n.tr("army.routed", a.location.name), a.location, a.owner);
             a.moveTo(best);
             a.clearPath();
+            a.morale = Math.max(a.morale, Army.BREAK_MORALE + 15);
         }
     }
 
     private boolean hostileArmyAt(Country c, Province p) {
-        for (Army o : armies) if (!o.dead && o.location == p && atWar(c, o.owner)) return true;
+        for (Army o : armies) if (!o.dead && o.fleet == null && o.location == p && atWar(c, o.owner)) return true;
         return false;
     }
 
@@ -493,13 +1235,13 @@ public final class Game {
         Map<Long, Army> stacks = new HashMap<>();
         for (Army a : armies) {
             // The player's armies only merge on request so they can be split across provinces.
-            if (a.dead || !a.path.isEmpty() || a.owner == player) continue;
-            long k = ((long) a.location.id << 32) | a.owner.id;
+            if (a.dead || a.fleet != null || !a.path.isEmpty() || isHuman(a.owner)) continue;
+            long k = ((long) a.location.id << 32) | ((long) a.owner.id << 4) | a.type.ordinal();
             Army host = stacks.get(k);
             if (host == null) {
                 stacks.put(k, a);
             } else {
-                host.strength += a.strength;
+                host.absorb(a);
                 a.dead = true;
             }
         }
@@ -508,16 +1250,16 @@ public final class Game {
 
     private void resolveOccupation() {
         for (Army a : armies) {
-            if (a.dead) continue;
+            if (a.dead || a.fleet != null) continue;
             Province p = a.location;
             if (p.owner == null || p.controller == a.owner || !atWar(a.owner, p.controller)) continue;
             if (a.daysHere < OCCUPY_DAYS || hostileArmyAt(a.owner, p)) continue;
             Country victim = p.owner;
             p.controller = a.owner;
             mapDirty = true;
-            if (a.owner == player) log(I18n.tr("occupied.us", p.name, victim.displayName()));
-            else if (victim == player) log(I18n.tr("occupied.them", p.name, a.owner.displayName()));
-            if (victim.capital == p && victim.alive) log(I18n.tr("capital.fallen", victim.displayName(), p.name, a.owner.displayName()));
+            if (isHuman(a.owner)) report(Synth.Cue.GOOD, I18n.tr("occupied.us", p.name, victim.displayName()), p, a.owner);
+            else if (isHuman(victim)) report(Synth.Cue.BAD, I18n.tr("occupied.them", p.name, a.owner.displayName()), p, victim);
+            if (victim.capital == p && victim.alive) report(I18n.tr("capital.fallen", victim.displayName(), p.name, a.owner.displayName()), p, victim, a.owner);
             checkElimination(victim);
         }
     }
@@ -535,11 +1277,19 @@ public final class Game {
         }
         for (Province p : new ArrayList<>(c.provinces)) if (p.controller != c) world.setOwner(p, p.controller);
         c.alive = false;
+        eliminations++;
         for (Army a : armies) if (a.owner == c) a.dead = true;
+        for (Fleet f : fleets) if (f.owner == c) f.dead = true;
         wars.keySet().removeIf(k -> (k >> 32) == c.id || (k & 0xFFFFFFFFL) == c.id);
         totalWars.removeIf(k -> (k >> 32) == c.id || (k & 0xFFFFFFFFL) == c.id);
+        alliances.removeIf(k -> (k >> 32) == c.id || (k & 0xFFFFFFFFL) == c.id);
+        diplomacyChanged();
+        pacts.keySet().removeIf(k -> (k >> 32) == c.id || (k & 0xFFFFFFFFL) == c.id);
+        guarantees.removeIf(k -> (k >> 32) == c.id || (k & 0xFFFFFFFFL) == c.id);
+        trades.removeIf(k -> (k >> 32) == c.id || (k & 0xFFFFFFFFL) == c.id);
+        warGoals.keySet().removeIf(k -> (k >> 32) == c.id || (k & 0xFFFFFFFFL) == c.id);
         mapDirty = true;
-        log(I18n.tr("country.eliminated", c.displayName()));
+        report(I18n.tr("country.eliminated", c.displayName()), null);
     }
 
     private static boolean holdsOwnLand(Country c) {
@@ -550,7 +1300,7 @@ public final class Game {
     /** After peace, armies standing on land they may no longer enter are sent home. */
     private void evictArmies() {
         for (Army a : armies) {
-            if (a.dead || allowed(a.owner, a.location)) continue;
+            if (a.dead || a.fleet != null || allowed(a.owner, a.location)) continue;
             Country owner = a.owner;
             List<Province> home = findPath(owner, a.location, p -> p.owner == owner && p.controller == owner);
             if (home != null && !home.isEmpty()) {
@@ -567,15 +1317,47 @@ public final class Game {
             if (!c.alive) continue;
             c.gold += monthlyIncome(c) - monthlyUpkeep(c);
             c.manpower += monthlyManpower(c);
+            researchTick(c);
+            GameEvents.monthly(this, c);
             if (c.gold < 0) {
                 for (Army a : armies) if (a.owner == c) a.strength = (int) (a.strength * 0.97);
             }
         }
+        stats.record(this);
     }
 
     public List<Country> aliveCountries() {
         List<Country> out = new ArrayList<>();
         for (Country c : world.countries) if (c.alive) out.add(c);
         return out;
+    }
+
+    /** Share of all owned land above which a nation counts as a hegemon the others band together against. */
+    public static final double HEGEMON_SHARE = 0.20;
+
+    /** The nation holding more than {@link #HEGEMON_SHARE} of all owned provinces, or null. */
+    public Country hegemon() {
+        int total = 0;
+        Country best = null;
+        for (Country c : world.countries) {
+            if (!c.alive) continue;
+            total += c.provinces.size();
+            if (best == null || c.provinces.size() > best.provinces.size()) best = c;
+        }
+        return best != null && best.provinces.size() > total * HEGEMON_SHARE ? best : null;
+    }
+
+    /** Sends a share of a nation's soldiers home (they return to the manpower pool); used to get out of debt. */
+    public void demobilize(Country c, double share) {
+        for (Army a : armies) {
+            if (a.dead || a.owner != c) continue;
+            int released = (int) (a.strength * share);
+            a.strength -= released;
+            c.manpower += released;
+            if (a.strength < 100) {
+                c.manpower += a.strength;
+                a.dead = true;
+            }
+        }
     }
 }

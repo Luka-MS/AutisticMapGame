@@ -3,6 +3,11 @@ package mapgame.ui;
 import static mapgame.model.World.H;
 import static mapgame.model.World.W;
 
+import java.awt.BasicStroke;
+import java.awt.Color;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
+import java.awt.geom.Path2D;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferInt;
 import mapgame.model.Country;
@@ -46,6 +51,9 @@ public final class MapRenderer {
                 int color = ((x + y) >> 2 & 1) == 0 ? stripe[id] : base[id];
                 Province p = world.provinces.get(id);
                 if (p.isLand()) {
+                    // Terrain texture: strong on the terrain map, subtle on the political map.
+                    double tex = texture(p.terrain, x, y);
+                    color = scale(color, 1 + (tex - 1) * (political ? 0.45 : 1.0));
                     double f = 1;
                     f = Math.min(f, edge(world, p, x > 0 ? ids[i - 1] : id, political));
                     f = Math.min(f, edge(world, p, x < W - 1 ? ids[i + 1] : id, political));
@@ -56,6 +64,40 @@ public final class MapRenderer {
                 out[i] = color;
             }
         }
+        drawRivers(world, img);
+    }
+
+    /** Rivers are drawn over the land in a soft blue. */
+    private static void drawRivers(World world, BufferedImage img) {
+        if (world.rivers.isEmpty()) return;
+        Graphics2D g = img.createGraphics();
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g.setStroke(new BasicStroke(1.3f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g.setColor(new Color(0x4E8FC4));
+        for (double[] r : world.rivers) {
+            Path2D.Double path = new Path2D.Double();
+            for (int k = 0; k < r.length / 2; k++) {
+                if (k == 0) path.moveTo(r[0], r[1]);
+                else path.lineTo(r[2 * k], r[2 * k + 1]);
+            }
+            g.draw(path);
+        }
+        g.dispose();
+    }
+
+    /** Brightness factor (about 0.85 - 1.15) of a pixel of the given terrain; deterministic, no state. */
+    private static double texture(Terrain t, int x, int y) {
+        int h = x * 374761393 + y * 668265263;
+        h = (h ^ (h >>> 13)) * 1274126177;
+        double noise = ((h ^ (h >>> 16)) & 0xFF) / 255.0 - 0.5;
+        return switch (t) {
+            case FOREST -> ((x * 7 + y * 13) % 11 == 0 ? 0.80 : 1.0) + noise * 0.07;
+            case MOUNTAIN -> (((x - y) >> 2 & 1) == 0 ? 1.10 : 0.88) + noise * 0.06;
+            case DESERT -> 1 + 0.06 * Math.sin((x + y * 0.6) / 4.5) + noise * 0.04;
+            case SNOW -> 1.04 + noise * 0.04;
+            case PLAINS -> 1 + noise * 0.06;
+            default -> 1;
+        };
     }
 
     /** Darkening factor for a pixel of {@code p} touching province {@code otherId}. */
