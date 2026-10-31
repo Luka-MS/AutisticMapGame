@@ -5,9 +5,9 @@ Ideas and planned work for Map Game. Tick items off (`[x]`) as they are done.
 ## Suggested order
 
 1. [x] Save / load and AI balance on the real maps
-2. [ ] Navy and sea transport
-3. [ ] Alliances and supply
-4. [ ] Real capitals and cities, then buildings and technology
+2. [x] Navy and sea transport
+3. [x] Alliances and supply
+4. [x] Real capitals and cities, then buildings and technology
 
 ## Fix first (small, high value)
 
@@ -49,7 +49,7 @@ Ideas and planned work for Map Game. Tick items off (`[x]`) as they are done.
 ## Technical
 
 - [x] **Automated tests** for the simulation (pathfinding, combat, occupation, peace limits, alliances, supply, reinforcement, front planner, save/load) in `mapgame.tools.SelfTest`, run by a CI build on GitHub Actions (`.github/workflows/ci.yml`) for pushes to main/developer and for pull requests.
-- [ ] **Packaging:** a runnable `.jar` or Windows installer (`jpackage`) so the game can be played without a JDK.
+- [x] **Packaging:** `package.ps1` builds a self-contained Windows app image with `jpackage`, and a tag push runs it on GitHub Actions (see README).
 - [x] **Performance:** the political and terrain map images are cached per mode (rebuilt only when ownership changes). A JFR profile of the 177-nation world showed the AI's diplomacy queries (enemies and allies of every nation) as the hot spot; they are cached now, which halves the time per game day (0.73 -> 0.34 ms on the World map) with identical behaviour. A day is far below the 40 ms budget of the fastest game speed.
 
 ## Project housekeeping
