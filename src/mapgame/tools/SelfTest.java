@@ -47,6 +47,7 @@ public final class SelfTest {
         run("navy", SelfTest::navy);
         run("map editor", SelfTest::mapEditor);
         run("sound", SelfTest::sounds);
+        run("hotseat", SelfTest::hotseat);
         run("events and decisions", SelfTest::events);
         run("language files", SelfTest::languages);
         run("save and load", SelfTest::saveLoad);
@@ -636,6 +637,30 @@ public final class SelfTest {
         }
         g.declareWar(x, y);
         check(heard.size() == before, "wars between other nations are silent");
+    }
+
+    private static void hotseat() throws IOException {
+        Game g = newGame();
+        Country a = g.world.countries.get(0), b = g.world.countries.get(1);
+        g.humans.add(a);
+        g.humans.add(b);
+        g.player = a;
+        check(g.isHuman(a) && g.isHuman(b) && !g.isHuman(g.world.countries.get(2)), "all hotseat players count as human");
+        java.util.Set<Integer> before = new java.util.HashSet<>();
+        for (Army x : g.armies) if (x.owner == b) before.add(x.id);
+        for (int i = 0; i < 240; i++) g.tickDay();
+        java.util.Set<Integer> after = new java.util.HashSet<>();
+        for (Army x : g.armies) if (x.owner == b) after.add(x.id);
+        check(before.equals(after), "the AI leaves the armies of a hotseat player alone");
+        check(g.events.stream().noneMatch(e -> e.text().isEmpty()), "events exist for hotseat players");
+        Path file = Files.createTempFile("hotseat", SaveFile.EXTENSION);
+        try {
+            SaveFile.save(g, file);
+            Game h = SaveFile.load(file);
+            check(h.humans.size() == 2 && h.player != null && h.player.id == a.id, "a save remembers the hotseat players");
+        } finally {
+            Files.deleteIfExists(file);
+        }
     }
 
     private static void fogOfWar() {

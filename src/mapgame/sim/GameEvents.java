@@ -93,7 +93,7 @@ final class GameEvents {
         int amount = t == Type.HARVEST ? u * 3 / 2 : cost(g, c, t);
         int option = 0;
         if (t.options > 1) {
-            if (c == g.player) {
+            if (g.isHuman(c)) {
                 List<String> labels = new ArrayList<>();
                 for (int i = 0; i < t.options; i++) labels.add(I18n.tr("event." + t.name() + ".opt" + i, c.displayName(), amount, place));
                 option = g.decisions.choose(I18n.tr("event." + t.name() + ".title"),

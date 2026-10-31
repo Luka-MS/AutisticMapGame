@@ -82,14 +82,14 @@ final class Ai {
         if (g.rnd.nextDouble() < 0.03 && g.pactsOf(c) < 1) {
             List<Country> options = new ArrayList<>();
             for (Country o : g.world.countries) {
-                if (o.alive && o != c && o != g.player && !g.atWar(c, o) && !g.allied(c, o) && !g.hasPact(c, o) && g.bordersCountry(c, o)) options.add(o);
+                if (o.alive && o != c && !g.isHuman(o) && !g.atWar(c, o) && !g.allied(c, o) && !g.hasPact(c, o) && g.bordersCountry(c, o)) options.add(o);
             }
             if (!options.isEmpty()) g.proposePact(c, options.get(g.rnd.nextInt(options.size())));
         }
         if (g.rnd.nextDouble() < 0.15 && g.tradesOf(c) < Game.MAX_TRADES) {
             List<Country> options = new ArrayList<>();
             for (Country o : g.world.countries) {
-                if (o.alive && o != c && o != g.player && !g.atWar(c, o) && !g.hasTrade(c, o) && g.tradesOf(o) < Game.MAX_TRADES) options.add(o);
+                if (o.alive && o != c && !g.isHuman(o) && !g.atWar(c, o) && !g.hasTrade(c, o) && g.tradesOf(o) < Game.MAX_TRADES) options.add(o);
             }
             if (!options.isEmpty()) g.makeTrade(c, options.get(g.rnd.nextInt(options.size())));
         }
@@ -113,7 +113,7 @@ final class Ai {
         if (g.alliesOf(c).size() >= Game.MAX_ALLIES || g.rnd.nextDouble() > 0.2) return;
         List<Country> partners = new ArrayList<>();
         for (Country o : g.world.countries) {
-            if (!o.alive || o == c || o == h || o == g.player || g.allied(c, o) || g.atWar(c, o)) continue;
+            if (!o.alive || o == c || o == h || g.isHuman(o) || g.allied(c, o) || g.atWar(c, o)) continue;
             if (g.alliesOf(o).size() >= Game.MAX_ALLIES || o.provinces.size() < 3) continue;
             if (g.sharedInterest(c, o) || g.bordersCountry(c, o) && g.alliesOf(c).size() < 2 && g.alliesOf(o).size() < 2
                     && g.rnd.nextDouble() < 0.15) {

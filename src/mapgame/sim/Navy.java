@@ -270,7 +270,7 @@ public final class Navy {
         if (g.day % 5 != 0) return;
         Map<Long, Fleet> hosts = new HashMap<>();
         for (Fleet f : g.fleets) {
-            if (f.dead || f.owner == g.player || !f.path.isEmpty() || !f.cargo.isEmpty()) continue;
+            if (f.dead || g.isHuman(f.owner) || !f.path.isEmpty() || !f.cargo.isEmpty()) continue;
             long key = ((long) f.location.id << 32) | f.owner.id;
             Fleet host = hosts.get(key);
             if (host == null) {

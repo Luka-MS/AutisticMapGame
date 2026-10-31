@@ -41,7 +41,8 @@ Ideas and planned work for Map Game. Tick items off (`[x]`) as they are done.
 - [x] **Difficulty settings** (easy / normal / hard: AI and player income), an **AI aggressiveness** slider (0-100) in the main menu, and a **nation picker** table (provinces, population, income, manpower, army; sortable, double-click to choose) next to the Start button.
 - [x] **Sound and music:** all sounds are generated in code (no files): war, peace, good-news and bad-news cues for events that involve you, and a slow ambient music loop. The *Sound* button / **O** cycles off - effects - effects + music; the choice is remembered.
 - [ ] **Nicer map rendering** (terrain textures, rivers, smooth borders) and animated battles.
-- [ ] **Multiplayer:** hotseat first, online later.
+- [x] **Hotseat multiplayer:** 2-4 humans on one computer (*Players* spinner in the main menu). Everyone picks a nation, then the game plays in turns of 30 days: each player plans in turn (a blank hand-over screen hides the previous player's map), then the world runs for 30 days. Saves remember all players.
+- [ ] **Online multiplayer:** needs a network layer and a synchronised (deterministic) simulation; not implemented.
 - [x] **Mod support:** a `mods/` folder next to the game can hold scenarios (`mods/scenarios/*.txt`: new nations, merged nations, owners, alliances), texts (`mods/lang/<language>.properties`, `mods/lang/countries.tsv`) and a replacement map (`mods/data/world.txt`). `mods-example/` is a ready-to-copy template.
 - [x] **Map editor** (main menu): pick a map, create and rename nations (colour dialog), click provinces to give them to the selected nation, rename provinces and set their population, then save the result as a scenario in `mods/scenarios/`. Only differences to the generated world are saved, so scenarios stay small and work for random worlds too (the seed is stored).
 

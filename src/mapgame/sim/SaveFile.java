@@ -33,8 +33,8 @@ import mapgame.model.TechField;
 public final class SaveFile {
     public static final String EXTENSION = ".sav";
     private static final int MAGIC = 0x4D47534D;
-    /** Format version; each feature added fields (2 conquest day ... 15 scenario, 16 fleets). Older versions load too. */
-    private static final int VERSION = 16;
+    /** Format version; each feature added fields (2 conquest day ... 16 fleets, 17 hotseat players). Older versions load too. */
+    private static final int VERSION = 17;
 
     private SaveFile() {
     }
@@ -73,6 +73,8 @@ public final class SaveFile {
 
         out.writeInt(g.day);
         out.writeInt(g.player == null ? -1 : g.player.id);
+        out.writeInt(g.humans.size());
+        for (Country h : g.humans) out.writeInt(h.id);
         long rngSeed = g.rnd.nextLong();
         g.rnd.setSeed(rngSeed);
         out.writeLong(rngSeed);
@@ -214,6 +216,11 @@ public final class SaveFile {
         g.day = in.readInt();
         int playerId = in.readInt();
         g.player = playerId < 0 ? null : g.world.countries.get(playerId);
+        g.humans.clear();
+        if (version >= 17) {
+            int humans = in.readInt();
+            for (int i = 0; i < humans; i++) g.humans.add(g.world.countries.get(in.readInt()));
+        }
         g.rnd.setSeed(in.readLong());
         g.nextArmyId = in.readInt();
         g.nextGroupId = in.readInt();

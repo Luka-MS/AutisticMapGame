@@ -97,6 +97,15 @@ public final class GameWindow extends JFrame {
     private boolean started;
     private boolean inMenu = true;
     private boolean modalOpen;
+
+    // Hotseat: several human players on one computer, taking turns of 30 days.
+    private static final int TURN_DAYS = 30;
+    private final List<Country> seats = new ArrayList<>();
+    private final JButton endTurnBtn = button();
+    private final JLabel curtainLabel = new JLabel("", javax.swing.SwingConstants.CENTER);
+    private final JButton curtainOk = new JButton();
+    private int newGamePlayers = 1, seat, turnDaysLeft;
+    private boolean hotseat, curtain;
     private boolean dividerPlaced;
     private int speed;
     private int lastAutosaveYear;
@@ -141,6 +150,7 @@ public final class GameWindow extends JFrame {
         root.add(menu, "menu");
         root.add(gamePanel, "game");
         root.add(editorPanel, "editor");
+        root.add(buildCurtain(), "curtain");
         setContentPane(root);
         installKeys();
         I18n.addListener(this::applyLanguage);
@@ -161,6 +171,7 @@ public final class GameWindow extends JFrame {
         loadBtn.addActionListener(e -> loadWithChooser());
         modeBtn.addActionListener(e -> toggleMode());
         fogBtn.addActionListener(e -> toggleFog());
+        endTurnBtn.addActionListener(e -> endTurn());
         soundBtn.addActionListener(e -> cycleSound());
         groupsBtn.addActionListener(e -> showGroups());
         nationBtn.addActionListener(e -> showNation(null));
@@ -229,7 +240,7 @@ public final class GameWindow extends JFrame {
     private void showGame() {
         inMenu = false;
         lastNanos = System.nanoTime();
-        cards.show(root, "game");
+        cards.show(root, curtain ? "curtain" : "game");
         root.validate();
         if (!dividerPlaced) {
             dividerPlaced = true;
@@ -240,6 +251,7 @@ public final class GameWindow extends JFrame {
     /** Generates the world in the background, then switches from the menu to the game. */
     public void startNewGame(MapKind kind, long seed) {
         menu.setBusy(I18n.tr("menu.generating", kind.label()));
+        newGamePlayers = menu.players();
         Difficulty difficulty = menu.difficulty();
         Scenario scenario = menu.scenario();
         // A scenario made with the map editor for a random world fixes the world seed.
@@ -285,6 +297,19 @@ public final class GameWindow extends JFrame {
         };
         updateTabTitles();
         started = restored && g.player != null;
+        seats.clear();
+        hotseat = false;
+        curtain = false;
+        turnDaysLeft = 0;
+        if (restored) {
+            newGamePlayers = 1;
+            // A saved hotseat game continues with the planning phase of the player who saved.
+            if (started && g.humans.size() > 1) {
+                for (Country c : g.humans) if (c.alive) seats.add(c);
+                hotseat = seats.size() > 1;
+                seat = Math.max(0, seats.indexOf(g.player));
+            }
+        }
         acc = 0;
         lastAutosaveYear = g.day / 360;
         logArea.setText("");
@@ -485,6 +510,8 @@ public final class GameWindow extends JFrame {
         }
         speedBtns.get(0).setSelected(true);
         head.add(left(speeds));
+        head.add(Box.createVerticalStrut(4));
+        head.add(left(endTurnBtn));
         head.add(Box.createVerticalStrut(6));
         head.add(left(modeBtn));
         head.add(Box.createVerticalStrut(4));
@@ -559,6 +586,7 @@ public final class GameWindow extends JFrame {
             bind(Integer.toString(i), () -> setSpeed(s));
         }
         bind("M", this::toggleMode);
+        bind("ENTER", this::endTurn);
         bind("F", this::toggleFog);
         bind("O", this::cycleSound);
         bind("X", this::splitSelected);
@@ -594,6 +622,10 @@ public final class GameWindow extends JFrame {
     private void startGame() {
         Province p = map.selectedProvince();
         if (p == null || p.owner == null) return;
+        if (newGamePlayers > 1) {
+            startHotseatSeat(p.owner);
+            return;
+        }
         game.player = p.owner;
         started = true;
         game.log(I18n.tr("log.start", game.player.displayName()));
@@ -602,12 +634,130 @@ public final class GameWindow extends JFrame {
         refresh();
     }
 
+    /** Hotseat setup: every human picks a nation in turn; when all have chosen, the first one starts planning. */
+    private void startHotseatSeat(Country c) {
+        if (seats.contains(c)) {
+            game.log(I18n.tr("hotseat.taken", c.displayName()));
+            return;
+        }
+        seats.add(c);
+        game.humans.add(c);
+        game.log(I18n.tr("hotseat.chosen", seats.size(), c.displayName()));
+        if (seats.size() < newGamePlayers) {
+            game.log(I18n.tr("hotseat.pick", seats.size() + 1, newGamePlayers));
+            refresh();
+            return;
+        }
+        hotseat = true;
+        started = true;
+        seat = 0;
+        game.player = seats.get(0);
+        game.log(I18n.tr("hotseat.begin", game.player.displayName()));
+        map.centerOn(game.player.capital);
+        setSpeed(0);
+        refresh();
+    }
+
+    /** Finishes the planning of the current player; after the last one the world runs for {@value #TURN_DAYS} days. */
+    private void endTurn() {
+        if (!hotseat || !started || turnDaysLeft > 0 || curtain) return;
+        seat++;
+        if (seat < seats.size()) {
+            showCurtain();
+            return;
+        }
+        seat = 0;
+        turnDaysLeft = TURN_DAYS;
+        acc = 0;
+        game.log(I18n.tr("hotseat.simulating", TURN_DAYS));
+    }
+
+    private void simulateTurn(double dt) {
+        if (turnDaysLeft <= 0) return;
+        acc += dt;
+        int steps = 0;
+        while (acc >= DAY_MS[4] && turnDaysLeft > 0 && steps < 10) {
+            acc -= DAY_MS[4];
+            game.tickDay();
+            turnDaysLeft--;
+            steps++;
+        }
+        if (steps == 10) acc = 0;
+        if (game.day / 360 > lastAutosaveYear) {
+            lastAutosaveYear = game.day / 360;
+            autosave();
+        }
+        if (turnDaysLeft == 0) afterTurn();
+    }
+
+    /** The month is over: drop eliminated players, check for a winner, then hand over to the first player. */
+    private void afterTurn() {
+        for (Country c : new ArrayList<>(seats)) {
+            if (c.alive) continue;
+            seats.remove(c);
+            game.humans.remove(c);
+            JOptionPane.showMessageDialog(this, I18n.tr("dlg.defeat", c.displayName()), I18n.tr("dlg.defeat.title"), JOptionPane.WARNING_MESSAGE);
+        }
+        if (seats.isEmpty()) {
+            started = false;
+            hotseat = false;
+            return;
+        }
+        if (game.aliveCountries().size() == 1) {
+            started = false;
+            hotseat = false;
+            JOptionPane.showMessageDialog(this, I18n.tr("hotseat.winner", seats.get(0).displayName()), I18n.tr("dlg.victory.title"),
+                    JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+        hotseat = seats.size() > 1;
+        seat = 0;
+        if (hotseat) {
+            showCurtain();
+        } else {
+            game.player = seats.get(0);
+            setSpeed(1);
+        }
+    }
+
+    /** A blank screen between two players so nobody sees the other one's map. */
+    private void showCurtain() {
+        curtain = true;
+        curtainLabel.setText(I18n.tr("hotseat.curtain", seat + 1, seats.size(), seats.get(seat).displayName(), game.date()));
+        cards.show(root, "curtain");
+    }
+
+    private JPanel buildCurtain() {
+        JPanel p = new JPanel(new BorderLayout(0, 24));
+        p.setBackground(new java.awt.Color(0x0F1B2A));
+        p.setBorder(BorderFactory.createEmptyBorder(160, 80, 160, 80));
+        curtainLabel.setForeground(java.awt.Color.WHITE);
+        curtainLabel.setFont(curtainLabel.getFont().deriveFont(Font.BOLD, 30f));
+        curtainOk.setFocusable(false);
+        curtainOk.setFont(curtainOk.getFont().deriveFont(Font.BOLD, 20f));
+        curtainOk.addActionListener(e -> {
+            curtain = false;
+            game.player = seats.get(seat);
+            map.clearSelection();
+            map.centerOn(game.player.capital);
+            cards.show(root, "game");
+            lastNanos = System.nanoTime();
+            refresh();
+        });
+        p.add(curtainLabel, BorderLayout.CENTER);
+        JPanel south = new JPanel();
+        south.setOpaque(false);
+        south.add(curtainOk);
+        p.add(south, BorderLayout.SOUTH);
+        return p;
+    }
+
     private void goHome() {
         if (started && game.player.capital != null) map.showProvince(game.player.capital);
     }
 
     private void setSpeed(int s) {
-        speed = started ? s : 0;
+        speed = started && !hotseat ? s : 0;
         speedBtns.get(speed).setSelected(true);
     }
 
@@ -632,6 +782,7 @@ public final class GameWindow extends JFrame {
         loadBtn.setText(I18n.tr("btn.load"));
         updateModeText();
         updateSoundText();
+        curtainOk.setText(I18n.tr("hotseat.ready"));
         updateTabTitles();
         typeBox.repaint();
         eventList.repaint();
@@ -704,8 +855,10 @@ public final class GameWindow extends JFrame {
         long now = System.nanoTime();
         double dt = (now - lastNanos) / 1e6;
         lastNanos = now;
-        if (inMenu || modalOpen) return;
-        if (started && speed > 0) {
+        if (inMenu || modalOpen || curtain) return;
+        if (started && hotseat) {
+            simulateTurn(dt);
+        } else if (started && speed > 0) {
             acc += dt;
             int steps = 0;
             while (acc >= DAY_MS[speed] && steps < 10) {
@@ -750,6 +903,13 @@ public final class GameWindow extends JFrame {
         dateLabel.setText(game.date());
         fogBtn.setText(I18n.tr("btn.fog", I18n.tr(game.fogOfWar ? "fog.on" : "fog.off")));
         fogBtn.setEnabled(started);
+        endTurnBtn.setVisible(hotseat && started);
+        endTurnBtn.setEnabled(hotseat && turnDaysLeft == 0 && !curtain);
+        if (hotseat && me != null) {
+            endTurnBtn.setText(turnDaysLeft > 0 ? I18n.tr("hotseat.running", turnDaysLeft)
+                    : I18n.tr("hotseat.endturn", seat + 1, seats.size(), me.displayName()));
+        }
+        for (JToggleButton b : speedBtns) b.setEnabled(!hotseat);
 
         if (started && me != null) {
             double net = game.monthlyIncome(me) - game.monthlyUpkeep(me);

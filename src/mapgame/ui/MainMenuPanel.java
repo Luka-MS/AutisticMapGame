@@ -71,6 +71,8 @@ public final class MainMenuPanel extends JPanel {
     private final JComboBox<Language> languageBox = new JComboBox<>(Language.values());
     private final JComboBox<Difficulty> difficultyBox = new JComboBox<>(Difficulty.values());
     private final JSlider aggressionSlider = new JSlider(0, 100, 50);
+    private final javax.swing.JSpinner playersSpinner = new javax.swing.JSpinner(new javax.swing.SpinnerNumberModel(1, 1, 4, 1));
+    private final JLabel playersLabel = new JLabel();
     private final JComboBox<Scenario> scenarioBox = new JComboBox<>();
     private final JLabel scenarioLabel = new JLabel();
     private final JLabel difficultyLabel = new JLabel(), aggressionLabel = new JLabel(), aggressionValue = new JLabel();
@@ -152,6 +154,10 @@ public final class MainMenuPanel extends JPanel {
         scenarioRow.setOpaque(false);
         scenarioRow.add(scenarioLabel);
         scenarioRow.add(scenarioBox);
+        playersLabel.setForeground(MUTED);
+        scenarioRow.add(Box.createHorizontalStrut(18));
+        scenarioRow.add(playersLabel);
+        scenarioRow.add(playersSpinner);
         scenarioRow.setAlignmentX(CENTER_ALIGNMENT);
         content.add(scenarioRow);
         content.add(Box.createVerticalStrut(12));
@@ -202,6 +208,8 @@ public final class MainMenuPanel extends JPanel {
         aggressionSlider.setToolTipText(I18n.tr("menu.aggression.tip"));
         difficultyBox.repaint();
         scenarioLabel.setText(I18n.tr("menu.scenario"));
+        playersLabel.setText(I18n.tr("menu.players"));
+        playersSpinner.setToolTipText(I18n.tr("menu.players.tip"));
         scenarioBox.setToolTipText(I18n.tr("menu.scenario.tip"));
         scenarioBox.repaint();
         resumeBtn.setText(I18n.tr("menu.resume"));
@@ -305,6 +313,11 @@ public final class MainMenuPanel extends JPanel {
     private void start(MapKind kind) {
         if (busy) return;
         listener.play(kind, kind == MapKind.RANDOM ? randomSeed : System.nanoTime());
+    }
+
+    /** Number of human players on this computer (1 = normal game, 2 - 4 = hotseat). */
+    public int players() {
+        return (Integer) playersSpinner.getValue();
     }
 
     /** The chosen scenario, or null for the modern borders. Only real maps use it. */

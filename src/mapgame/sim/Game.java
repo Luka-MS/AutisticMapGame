@@ -47,8 +47,15 @@ public final class Game {
     public final MapKind kind;
     public final long seed;
     public final List<Army> armies = new ArrayList<>();
-    /** The human player's nation; null while choosing (or when running AI-only). */
+    /** The human player's nation; null while choosing (or when running AI-only). In hotseat games: the nation whose turn it is. */
     public Country player;
+    /** All human nations of a hotseat game (empty in a normal game); the AI plays every nation that is not human. */
+    public final List<Country> humans = new ArrayList<>();
+
+    /** True for the player's nation and for every nation of a hotseat player. */
+    public boolean isHuman(Country c) {
+        return c != null && (c == player || humans.contains(c));
+    }
     public int day;
     /** Set whenever ownership/control changes so the renderer can rebuild the map. */
     public boolean mapDirty = true;
@@ -139,7 +146,7 @@ public final class Game {
     public void report(Synth.Cue cue, String msg, Province where, Country... involved) {
         report(msg, where, involved);
         for (Country c : involved) {
-            if (c != null && c == player) {
+            if (c != null && isHuman(c)) {
                 cueSink.accept(cue);
                 return;
             }
@@ -167,7 +174,7 @@ public final class Game {
     public void report(String msg, Province where, Country... involved) {
         log(msg);
         boolean relevant = involved.length == 0;
-        for (Country c : involved) if (c != null && c == player) relevant = true;
+        for (Country c : involved) if (c != null && isHuman(c)) relevant = true;
         if (!relevant) return;
         Event e = new Event(day, msg, where);
         events.add(e);
@@ -213,7 +220,7 @@ public final class Game {
             return true;
         }
         wars.put(key(a, b), day);
-        warGoals.put(key(a, b), (a == player ? nextWarGoal : WarGoal.CONQUEST).ordinal());
+        warGoals.put(key(a, b), (isHuman(a) ? nextWarGoal : WarGoal.CONQUEST).ordinal());
         trades.remove(key(a, b));
         guarantees.remove(directed(a, b));
         guarantees.remove(directed(b, a));
@@ -263,14 +270,14 @@ public final class Game {
     private void callToArms(Country aggressor, Country victim) {
         for (Country ally : alliesOf(victim)) {
             if (ally == aggressor || atWar(ally, aggressor) || allied(ally, aggressor)) continue;
-            if (ally == player) {
-                report(I18n.tr("alliance.callarms", victim.displayName(), aggressor.displayName()), null, player);
+            if (isHuman(ally)) {
+                report(I18n.tr("alliance.callarms", victim.displayName(), aggressor.displayName()), null, ally);
             } else if (rnd.nextDouble() < DEFENDER_ALLY_JOINS) {
                 declareWar(ally, aggressor, false, false);
             }
         }
         for (Country ally : alliesOf(aggressor)) {
-            if (ally == victim || atWar(ally, victim) || allied(ally, victim) || ally == player) continue;
+            if (ally == victim || atWar(ally, victim) || allied(ally, victim) || isHuman(ally)) continue;
             if (rnd.nextDouble() < AGGRESSOR_ALLY_JOINS) declareWar(ally, victim, false, false);
         }
     }
@@ -435,11 +442,13 @@ public final class Game {
     /** Guarantors of the victim join like allies do. */
     private void callGuarantors(Country aggressor, Country victim) {
         for (Country o : world.countries) {
-            if (!o.alive || o == aggressor || !guarantees(o, victim) || atWar(o, aggressor) || allied(o, aggressor) || o == player) continue;
+            if (!o.alive || o == aggressor || !guarantees(o, victim) || atWar(o, aggressor) || allied(o, aggressor) || isHuman(o)) continue;
             if (rnd.nextDouble() < 0.6) declareWar(o, aggressor, false, false);
         }
-        if (player != null && guarantees(player, victim) && player != aggressor && !atWar(player, aggressor)) {
-            report(I18n.tr("guarantee.callarms", victim.displayName(), aggressor.displayName()), null, player);
+        for (Country h : world.countries) {
+            if (h.alive && isHuman(h) && h != aggressor && guarantees(h, victim) && !atWar(h, aggressor)) {
+                report(I18n.tr("guarantee.callarms", victim.displayName(), aggressor.displayName()), null, h);
+            }
         }
     }
 
@@ -603,7 +612,7 @@ public final class Game {
             if (p.controller == c) inc += p.income(day) * (blockaded.contains(p) ? 1 - Navy.BLOCKADE_LOSS : 1);
         }
         double bonus = (day < c.incomeBonusUntil ? 1 + c.incomeBonus : 1) * (1 + 0.06 * tradesOf(c));
-        double skill = c == player ? difficulty.player : difficulty.ai;
+        double skill = isHuman(c) ? difficulty.player : difficulty.ai;
         return inc * (1 + 0.08 * c.techLevel(TechField.ECONOMY)) * c.taxes.gold * c.conscription.gold * bonus * skill;
     }
 
@@ -657,7 +666,7 @@ public final class Game {
 
     private void researchTick(Country c) {
         if (c.researching == null) {
-            if (c != player) aiPickResearch(c);
+            if (!isHuman(c)) aiPickResearch(c);
             if (c.researching == null) return;
         }
         c.researchProgress += researchRate(c);
@@ -930,7 +939,7 @@ public final class Game {
             if (p.owner == null) continue;
             if (p.building != null && day >= p.buildDone) {
                 p.buildings[p.building.ordinal()]++;
-                if (p.owner == player) report(Synth.Cue.GOOD, I18n.tr("building.done", p.building.label(), p.name), p, p.owner);
+                if (isHuman(p.owner)) report(Synth.Cue.GOOD, I18n.tr("building.done", p.building.label(), p.name), p, p.owner);
                 p.building = null;
             }
             if (p.controller == p.owner) {
@@ -950,7 +959,7 @@ public final class Game {
                 p.controller = p.owner;
                 p.unrest = 0;
                 mapDirty = true;
-                report(p.owner == player ? Synth.Cue.GOOD : Synth.Cue.BAD, I18n.tr("rebels.free", p.name, p.owner.displayName(), holder.displayName()), p, p.owner, holder);
+                report(isHuman(p.owner) ? Synth.Cue.GOOD : Synth.Cue.BAD, I18n.tr("rebels.free", p.name, p.owner.displayName(), holder.displayName()), p, p.owner, holder);
             }
         }
     }
@@ -1044,7 +1053,7 @@ public final class Game {
             a.strength -= loss;
             if (a.strength < 100) {
                 a.dead = true;
-                if (a.owner == player) report(I18n.tr("army.starved", a.location.name), a.location, a.owner);
+                if (isHuman(a.owner)) report(I18n.tr("army.starved", a.location.name), a.location, a.owner);
             }
         }
     }
@@ -1068,7 +1077,7 @@ public final class Game {
         }
         if (day % 5 == 0) {
             for (Country c : new ArrayList<>(world.countries)) {
-                if (c.alive && c != player) Ai.think(this, c);
+                if (c.alive && !isHuman(c)) Ai.think(this, c);
             }
         }
         if (day % 30 == 0) monthly();
@@ -1157,7 +1166,7 @@ public final class Game {
             if (!allowed(a.owner, q) || hostileArmyAt(a.owner, q)) continue;
             if (best == null || q.controller == a.owner) best = q;
         }
-        boolean playerInvolved = a.owner == player;
+        boolean playerInvolved = isHuman(a.owner);
         if (best == null || a.strength <= 0) {
             a.dead = true;
             if (playerInvolved) report(Synth.Cue.BAD, I18n.tr("army.destroyed", a.location.name), a.location, a.owner);
@@ -1178,7 +1187,7 @@ public final class Game {
         Map<Long, Army> stacks = new HashMap<>();
         for (Army a : armies) {
             // The player's armies only merge on request so they can be split across provinces.
-            if (a.dead || a.fleet != null || !a.path.isEmpty() || a.owner == player) continue;
+            if (a.dead || a.fleet != null || !a.path.isEmpty() || isHuman(a.owner)) continue;
             long k = ((long) a.location.id << 32) | ((long) a.owner.id << 4) | a.type.ordinal();
             Army host = stacks.get(k);
             if (host == null) {
@@ -1200,8 +1209,8 @@ public final class Game {
             Country victim = p.owner;
             p.controller = a.owner;
             mapDirty = true;
-            if (a.owner == player) report(Synth.Cue.GOOD, I18n.tr("occupied.us", p.name, victim.displayName()), p, player);
-            else if (victim == player) report(Synth.Cue.BAD, I18n.tr("occupied.them", p.name, a.owner.displayName()), p, player);
+            if (isHuman(a.owner)) report(Synth.Cue.GOOD, I18n.tr("occupied.us", p.name, victim.displayName()), p, a.owner);
+            else if (isHuman(victim)) report(Synth.Cue.BAD, I18n.tr("occupied.them", p.name, a.owner.displayName()), p, victim);
             if (victim.capital == p && victim.alive) report(I18n.tr("capital.fallen", victim.displayName(), p.name, a.owner.displayName()), p, victim, a.owner);
             checkElimination(victim);
         }

@@ -131,6 +131,10 @@ Every month each nation has a small chance of an event: *bumper harvest*, *plagu
 
 The AI builds fleets, hunts and blockades, and ferries armies to islands and coasts it cannot reach by land.
 
+### Hotseat (2-4 players on one computer)
+
+Set *Players* to 2-4 in the main menu before starting a world. Each player in turn clicks a nation and presses **Start**. Then the game is turn based: the first player plans (orders, recruiting, diplomacy, ...) and presses **End turn** (**Enter**); a hand-over screen appears so the next player can take the keyboard without seeing the previous map; after the last player the world simulates 30 days, events that concern a human ask that human directly. Fog of war, the Events tab and all dialogs refer to the player whose turn it is. A player whose nation is eliminated drops out; the last nation standing wins. Saving works during planning and restores all players.
+
 ### Wars and total war
 
 - *Declare war* starts a normal war. Peace is accepted when the other side is not winning or when the war has dragged on for a long time. The winner takes at most 35% of the loser's provinces, and a nation can never lose its last province in a normal war.
