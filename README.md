@@ -56,7 +56,9 @@ To compile manually: `javac -d out\classes (Get-ChildItem src -Recurse -Filter *
 
 This builds the project, packs it into a runnable jar, then uses `jpackage` (bundled with the JDK) to produce a self-contained app image with its own private Java runtime under `out\dist\AutisticMapGame-Version-1.0.0\`, and zips it as `out\dist\AutisticMapGame-Version-1.0.0-win-x64.zip`. Players don't need Java installed to run the resulting `.exe`.
 
-Pushing a tag like `v1.0.0` triggers [`.github/workflows/release.yml`](.github/workflows/release.yml), which runs the same packaging step on GitHub Actions and attaches the zip to the corresponding GitHub Release automatically.
+Pushing a tag like `v1.0.0` triggers [`.github/workflows/release.yml`](.github/workflows/release.yml), which runs the same packaging step on GitHub Actions and attaches the zip to a **draft** GitHub Release. Review the draft and publish it manually.
+
+**Versioning** (`MAJOR.MINOR.PATCH`): bump MAJOR when old saves or mods stop working (for example the map data or save format changes), MINOR for new features that keep saves and mods working, and PATCH for bug fixes only.
 
 ### Building a standalone macOS app (`.app`)
 
