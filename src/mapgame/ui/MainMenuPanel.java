@@ -28,6 +28,7 @@ import javax.swing.JButton;
 import javax.swing.JComboBox;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
+import javax.swing.JSlider;
 import javax.swing.JTextArea;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
@@ -37,6 +38,7 @@ import mapgame.model.MapGenerator;
 import mapgame.model.MapKind;
 import mapgame.model.RealMapGenerator;
 import mapgame.model.World;
+import mapgame.sim.Difficulty;
 
 /** Start screen: pick a random world or a real map. */
 public final class MainMenuPanel extends JPanel {
@@ -64,6 +66,9 @@ public final class MainMenuPanel extends JPanel {
     private final JButton resumeBtn = new JButton(), quitBtn = new JButton(), loadBtn = new JButton(), rerollBtn = new JButton();
     private final JLabel subtitle = new JLabel("", SwingConstants.CENTER), languageLabel = new JLabel();
     private final JComboBox<Language> languageBox = new JComboBox<>(Language.values());
+    private final JComboBox<Difficulty> difficultyBox = new JComboBox<>(Difficulty.values());
+    private final JSlider aggressionSlider = new JSlider(0, 100, 50);
+    private final JLabel difficultyLabel = new JLabel(), aggressionLabel = new JLabel(), aggressionValue = new JLabel();
     private boolean applyingLanguage;
     private final JLabel statusLabel = new JLabel(" ", SwingConstants.CENTER);
     private long randomSeed = System.nanoTime();
@@ -100,6 +105,32 @@ public final class MainMenuPanel extends JPanel {
         statusLabel.setFont(statusLabel.getFont().deriveFont(Font.BOLD, 16f));
         statusLabel.setAlignmentX(CENTER_ALIGNMENT);
         content.add(statusLabel);
+        content.add(Box.createVerticalStrut(12));
+
+        difficultyBox.setFocusable(false);
+        difficultyBox.setSelectedItem(Difficulty.NORMAL);
+        difficultyBox.setRenderer(new javax.swing.DefaultListCellRenderer() {
+            @Override
+            public java.awt.Component getListCellRendererComponent(javax.swing.JList<?> l, Object v, int i, boolean s, boolean f) {
+                return super.getListCellRendererComponent(l, ((Difficulty) v).label(), i, s, f);
+            }
+        });
+        aggressionSlider.setOpaque(false);
+        aggressionSlider.setFocusable(false);
+        aggressionSlider.setPreferredSize(new Dimension(160, 24));
+        aggressionSlider.addChangeListener(e -> aggressionValue.setText(Integer.toString(aggressionSlider.getValue())));
+        for (JLabel l : new JLabel[] {difficultyLabel, aggressionLabel, aggressionValue}) l.setForeground(MUTED);
+        aggressionValue.setText("50");
+        JPanel settings = new JPanel(new FlowLayout(FlowLayout.CENTER, 8, 0));
+        settings.setOpaque(false);
+        settings.add(difficultyLabel);
+        settings.add(difficultyBox);
+        settings.add(Box.createHorizontalStrut(18));
+        settings.add(aggressionLabel);
+        settings.add(aggressionSlider);
+        settings.add(aggressionValue);
+        settings.setAlignmentX(CENTER_ALIGNMENT);
+        content.add(settings);
         content.add(Box.createVerticalStrut(12));
 
         JPanel bottom = new JPanel(new FlowLayout(FlowLayout.CENTER, 16, 0));
@@ -142,6 +173,10 @@ public final class MainMenuPanel extends JPanel {
         applyingLanguage = false;
         subtitle.setText(I18n.tr("menu.subtitle"));
         languageLabel.setText(I18n.tr("menu.language"));
+        difficultyLabel.setText(I18n.tr("menu.difficulty"));
+        aggressionLabel.setText(I18n.tr("menu.aggression"));
+        aggressionSlider.setToolTipText(I18n.tr("menu.aggression.tip"));
+        difficultyBox.repaint();
         resumeBtn.setText(I18n.tr("menu.resume"));
         loadBtn.setText(I18n.tr("menu.load"));
         quitBtn.setText(I18n.tr("menu.quit"));
@@ -242,6 +277,15 @@ public final class MainMenuPanel extends JPanel {
     private void start(MapKind kind) {
         if (busy) return;
         listener.play(kind, kind == MapKind.RANDOM ? randomSeed : System.nanoTime());
+    }
+
+    public Difficulty difficulty() {
+        return (Difficulty) difficultyBox.getSelectedItem();
+    }
+
+    /** How eager the AI is to start wars, 0 - 100 (50 = normal). */
+    public int aggression() {
+        return aggressionSlider.getValue();
     }
 
     /** Called by the window while a world is being generated. */

@@ -51,6 +51,9 @@ public final class Game {
     /** Set whenever ownership/control changes so the renderer can rebuild the map. */
     public boolean mapDirty = true;
     public Consumer<String> logSink = s -> { };
+    /** Chosen at the start: scales incomes (see {@link Difficulty}) and the AI's eagerness to start wars (0 - 100, 50 = normal). */
+    public Difficulty difficulty = Difficulty.NORMAL;
+    public int aggression = 50;
     /** Statistics for the balance tools; not part of a save. */
     public int warsDeclared, totalWarsDeclared, peaceDeals, eliminations, coalitionWars, alliancesFormed;
 
@@ -543,7 +546,8 @@ public final class Game {
         double inc = 0;
         for (Province p : c.provinces) if (p.controller == c) inc += p.income(day);
         double bonus = (day < c.incomeBonusUntil ? 1 + c.incomeBonus : 1) * (1 + 0.06 * tradesOf(c));
-        return inc * (1 + 0.08 * c.techLevel(TechField.ECONOMY)) * c.taxes.gold * c.conscription.gold * bonus;
+        double skill = c == player ? difficulty.player : difficulty.ai;
+        return inc * (1 + 0.08 * c.techLevel(TechField.ECONOMY)) * c.taxes.gold * c.conscription.gold * bonus * skill;
     }
 
     public double monthlyUpkeep(Country c) {

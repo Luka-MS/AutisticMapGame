@@ -54,6 +54,7 @@ import mapgame.model.Building;
 import mapgame.model.Country;
 import mapgame.model.MapKind;
 import mapgame.model.Province;
+import mapgame.sim.Difficulty;
 import mapgame.sim.Game;
 import mapgame.sim.SaveFile;
 
@@ -64,13 +65,14 @@ public final class GameWindow extends JFrame {
     private final MapPanel map = new MapPanel();
     private final JLabel dateLabel = new JLabel();
     private final JTextArea status = textArea(5), info = textArea(8), logArea = new JTextArea();
-    private final JButton startBtn = button(), recruitBtn = button(), splitBtn = button(), mergeBtn = button(),
+    private final JButton startBtn = button(), pickBtn = button(), recruitBtn = button(), splitBtn = button(), mergeBtn = button(),
             groupsBtn = button(), warBtn = button(), totalWarBtn = button(), peaceBtn = button(), allianceBtn = button(), nationBtn = button(),
             menuBtn = button(), saveBtn = button(), loadBtn = button(), modeBtn = button(), fogBtn = button();
     private final List<JToggleButton> speedBtns = new ArrayList<>();
     private JSplitPane sideSplit;
     private final ArmyGroupDialog groupDialog;
     private final NationDialog nationDialog;
+    private final NationPickerDialog pickerDialog;
     private final CardLayout cards = new CardLayout();
     private final JPanel root = new JPanel(cards);
     private final MainMenuPanel menu;
@@ -133,6 +135,10 @@ public final class GameWindow extends JFrame {
         setLocationRelativeTo(null);
         groupDialog = new ArmyGroupDialog(this, map);
         nationDialog = new NationDialog(this, map);
+        pickerDialog = new NationPickerDialog(this, c -> map.showProvince(c.capital));
+        pickBtn.addActionListener(e -> {
+            if (game != null && !started) pickerDialog.open(game);
+        });
         applyLanguage();
 
         startBtn.addActionListener(e -> startGame());
@@ -216,10 +222,15 @@ public final class GameWindow extends JFrame {
     /** Generates the world in the background, then switches from the menu to the game. */
     public void startNewGame(MapKind kind, long seed) {
         menu.setBusy(I18n.tr("menu.generating", kind.label()));
+        Difficulty difficulty = menu.difficulty();
+        int aggression = menu.aggression();
         new SwingWorker<Game, Void>() {
             @Override
             protected Game doInBackground() {
-                return Game.create(kind, seed);
+                Game g = Game.create(kind, seed);
+                g.difficulty = difficulty;
+                g.aggression = aggression;
+                return g;
             }
 
             @Override
@@ -425,7 +436,7 @@ public final class GameWindow extends JFrame {
 
         JPanel buttons = new JPanel();
         buttons.setLayout(new BoxLayout(buttons, BoxLayout.Y_AXIS));
-        for (JComponent b : new JComponent[] {startBtn, typeBox, recruitBtn, splitBtn, mergeBtn, groupsBtn, nationBtn, warBtn, totalWarBtn, peaceBtn, allianceBtn}) buttons.add(left(b));
+        for (JComponent b : new JComponent[] {startBtn, pickBtn, typeBox, recruitBtn, splitBtn, mergeBtn, groupsBtn, nationBtn, warBtn, totalWarBtn, peaceBtn, allianceBtn}) buttons.add(left(b));
 
         JPanel top = new WidthTrackingPanel(new BorderLayout(0, 6));
         top.setBorder(BorderFactory.createEmptyBorder(8, 8, 4, 8));
@@ -542,6 +553,7 @@ public final class GameWindow extends JFrame {
         UIManager.put("OptionPane.okButtonText", I18n.tr("dlg.ok"));
         UIManager.put("OptionPane.cancelButtonText", I18n.tr("dlg.cancel"));
         startBtn.setText(I18n.tr("btn.start"));
+        pickBtn.setText(I18n.tr("btn.pick"));
         recruitBtn.setText(I18n.tr("btn.recruit", Game.RECRUIT_GOLD, Game.RECRUIT_MEN));
         splitBtn.setText(I18n.tr("btn.split"));
         mergeBtn.setText(I18n.tr("btn.merge"));
@@ -674,6 +686,7 @@ public final class GameWindow extends JFrame {
         set(info, describe(sel));
 
         startBtn.setVisible(!started);
+        pickBtn.setVisible(!started);
         startBtn.setEnabled(sel != null && sel.owner != null);
         boolean playing = started && me != null;
         boolean own = playing && sel != null && sel.owner == me && sel.controller == me;

@@ -195,7 +195,7 @@ final class Ai {
     }
 
     private static void maybeDeclareWar(Game g, Country c) {
-        if (g.day < 90 || g.day < c.truceUntil || g.day % 30 != 0 || g.rnd.nextDouble() > 0.10) return;
+        if (g.day < 90 || g.day < c.truceUntil || g.day % 30 != 0 || g.rnd.nextDouble() > 0.10 * g.aggression / 50.0) return;
         long mine = g.strength(c);
         if (mine < 4000) return;
         Set<Country> neighbors = new LinkedHashSet<>();

@@ -47,8 +47,8 @@ Pushing a tag like `v1.0.0` triggers [`.github/workflows/release.yml`](.github/w
 
 ## How to play
 
-1. Choose a world in the main menu. *Random world* shows its preview first (use *Re-roll* for another one) and you play exactly that map.
-2. Click any coloured province to select a nation and press **Start**.
+1. Choose a world in the main menu. *Random world* shows its preview first (use *Re-roll* for another one) and you play exactly that map. Below the worlds you set the **difficulty** (easy: you earn 10% more and the AI 15% less; hard: the AI earns 20% more and you 5% less) and the **AI aggressiveness** (0 = the AI never starts wars on its own, 100 = very warlike).
+2. Click any coloured province to select a nation, or use *Choose nation from a list* for a sortable table with the key figures of every nation, and press **Start**.
 3. Press **Space** to unpause and use **1-5** to change the speed.
 4. Select an army (click its counter or a province) and **right-click** a province to march there.
 5. An army must stay for a few days in an enemy province to occupy it. Occupied provinces are drawn with stripes in the occupier's colour.

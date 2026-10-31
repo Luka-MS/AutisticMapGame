@@ -32,8 +32,8 @@ import mapgame.model.TechField;
 public final class SaveFile {
     public static final String EXTENSION = ".sav";
     private static final int MAGIC = 0x4D47534D;
-    /** Format version; each feature added fields (2 conquest day ... 12 morale, 13 treaties). Older versions load too. */
-    private static final int VERSION = 13;
+    /** Format version; each feature added fields (2 conquest day ... 13 treaties, 14 difficulty). Older versions load too. */
+    private static final int VERSION = 14;
 
     private SaveFile() {
     }
@@ -77,6 +77,8 @@ public final class SaveFile {
         out.writeInt(g.nextArmyId);
         out.writeInt(g.nextGroupId);
         out.writeBoolean(g.fogOfWar);
+        out.writeInt(g.difficulty.ordinal());
+        out.writeInt(g.aggression);
 
         for (Country c : g.world.countries) {
             out.writeBoolean(c.alive);
@@ -193,6 +195,10 @@ public final class SaveFile {
         g.nextArmyId = in.readInt();
         g.nextGroupId = in.readInt();
         if (version >= 7) g.fogOfWar = in.readBoolean();
+        if (version >= 14) {
+            g.difficulty = Difficulty.values()[in.readInt()];
+            g.aggression = in.readInt();
+        }
 
         for (Country c : g.world.countries) {
             c.alive = in.readBoolean();

@@ -41,6 +41,7 @@ public final class SelfTest {
         run("buildings and unrest", SelfTest::buildingsAndUnrest);
         run("research", SelfTest::research);
         run("policies", SelfTest::policies);
+        run("difficulty", SelfTest::difficulty);
         run("events and decisions", SelfTest::events);
         run("language files", SelfTest::languages);
         run("save and load", SelfTest::saveLoad);
@@ -424,6 +425,26 @@ public final class SelfTest {
         int events = k.events.size();
         k.declareWar(attacker, prot);
         check(k.events.size() > events, "the guarantor is notified");
+    }
+
+    private static void difficulty() {
+        Game g = newGame();
+        Country me = g.world.countries.get(0), other = g.world.countries.get(1);
+        g.player = me;
+        double normalMe = g.monthlyIncome(me), normalAi = g.monthlyIncome(other);
+        g.difficulty = mapgame.sim.Difficulty.HARD;
+        check(g.monthlyIncome(me) < normalMe && g.monthlyIncome(other) > normalAi, "hard: the AI earns more, the player less");
+        g.difficulty = mapgame.sim.Difficulty.EASY;
+        check(g.monthlyIncome(me) > normalMe && g.monthlyIncome(other) < normalAi, "easy: the player earns more, the AI less");
+
+        Game peaceful = newGame();
+        peaceful.aggression = 0;
+        for (int i = 0; i < 360 * 5; i++) peaceful.tickDay();
+        check(peaceful.warsDeclared == 0, "with aggression 0 the AI starts no wars (" + peaceful.warsDeclared + ")");
+        Game warlike = newGame();
+        warlike.aggression = 100;
+        for (int i = 0; i < 360 * 5; i++) warlike.tickDay();
+        check(warlike.warsDeclared > 0, "with aggression 100 the AI starts wars");
     }
 
     private static void fogOfWar() {

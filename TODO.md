@@ -38,7 +38,7 @@ Ideas and planned work for Map Game. Tick items off (`[x]`) as they are done.
 ## Gameplay and polish
 
 - [ ] **Scenarios and start dates:** real 1936 or 1914 starts with historical borders and nations.
-- [ ] **Difficulty settings** and a nation picker screen with stats and an AI aggressiveness slider.
+- [x] **Difficulty settings** (easy / normal / hard: AI and player income), an **AI aggressiveness** slider (0-100) in the main menu, and a **nation picker** table (provinces, population, income, manpower, army; sortable, double-click to choose) next to the Start button.
 - [ ] **Sound and music**, nicer map rendering (terrain textures, rivers, smooth borders), animated battles.
 - [ ] **Multiplayer:** hotseat first, online later.
 - [ ] **Mod support:** load custom maps, nations and scenarios from files.
