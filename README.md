@@ -137,6 +137,17 @@ alliance France, Russian Empire
 war Serbia, Austria-Hungary
 ```
 
+## Mods
+
+Create a folder `mods` next to the game (next to `saves`); `mods-example/` is a template you can copy. Everything is optional and read at start-up:
+
+| File | Purpose |
+|---|---|
+| `mods/scenarios/<id>.txt` | A scenario (format above). It appears in the scenario list; add a text `scenario.<id>=Name` to `mods/lang/en.properties` for a nicer name. |
+| `mods/lang/<language>.properties` | Extra or replaced texts (`en`, `de`, `ru`, `sh`). |
+| `mods/lang/countries.tsv` | Names of added nations: English, German, Serbo-Croatian, Russian (tab separated). |
+| `mods/data/world.txt` | Replaces the real-world geography completely (same format as `res/mapgame/data/world.txt`, see `tools/prepare_data.py`). Saves of other maps will not load while it is installed. |
+
 ## The worlds
 
 | World | Description |

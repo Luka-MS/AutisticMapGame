@@ -41,7 +41,7 @@ Ideas and planned work for Map Game. Tick items off (`[x]`) as they are done.
 - [x] **Difficulty settings** (easy / normal / hard: AI and player income), an **AI aggressiveness** slider (0-100) in the main menu, and a **nation picker** table (provinces, population, income, manpower, army; sortable, double-click to choose) next to the Start button.
 - [ ] **Sound and music**, nicer map rendering (terrain textures, rivers, smooth borders), animated battles.
 - [ ] **Multiplayer:** hotseat first, online later.
-- [ ] **Mod support:** load custom maps, nations and scenarios from files.
+- [x] **Mod support:** a `mods/` folder next to the game can hold scenarios (`mods/scenarios/*.txt`: new nations, merged nations, owners, alliances), texts (`mods/lang/<language>.properties`, `mods/lang/countries.tsv`) and a replacement map (`mods/data/world.txt`). `mods-example/` is a ready-to-copy template.
 - [ ] **Map editor** for custom countries and provinces.
 
 ## Technical

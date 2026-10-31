@@ -43,6 +43,7 @@ public final class SelfTest {
         run("policies", SelfTest::policies);
         run("difficulty", SelfTest::difficulty);
         run("scenarios", SelfTest::scenarios);
+        run("mods", SelfTest::mods);
         run("events and decisions", SelfTest::events);
         run("language files", SelfTest::languages);
         run("save and load", SelfTest::saveLoad);
@@ -480,6 +481,24 @@ public final class SelfTest {
         Game c = Game.create(MapKind.RANDOM, 42, custom);
         check(c.world.countries.stream().anyMatch(x -> x.name.equals("Atlantis") && x.alive) || !c.world.provinces.get(5).isLand(),
                 "scenarios can add nations and change owners");
+    }
+
+    private static void mods() throws IOException {
+        Path dir = Path.of("mods", "scenarios");
+        boolean existed = Files.exists(Path.of("mods"));
+        Files.createDirectories(dir);
+        Path file = dir.resolve("selftest_mod.txt");
+        Files.writeString(file, "name Self test mod\nstart 1950\nmaps random\n");
+        try {
+            mapgame.sim.Scenario s = mapgame.sim.Scenario.find("selftest_mod");
+            check(s != null && s.startYear == 1950 && s.supports(MapKind.RANDOM) && !s.supports(MapKind.EUROPE), "scenarios are loaded from the mods folder");
+            check(s != null && s.label().equals("Self test mod"), "a scenario without a text key shows its file name");
+        } finally {
+            Files.deleteIfExists(file);
+            Files.deleteIfExists(dir);
+            if (!existed) Files.deleteIfExists(Path.of("mods"));
+        }
+        check(mapgame.sim.Scenario.find("selftest_mod") == null, "removed mods are gone again");
     }
 
     private static void fogOfWar() {

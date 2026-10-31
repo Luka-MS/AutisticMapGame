@@ -36,7 +36,10 @@ final class GeoData {
 
     private static GeoData read() {
         GeoData data = new GeoData();
-        try (InputStream in = GeoData.class.getResourceAsStream("/mapgame/data/world.txt")) {
+        // A mod can replace the geography completely with its own world.txt (same format, see tools/prepare_data.py).
+        java.nio.file.Path mod = java.nio.file.Paths.get("mods", "data", "world.txt");
+        try (InputStream in = java.nio.file.Files.isRegularFile(mod) ? java.nio.file.Files.newInputStream(mod)
+                : GeoData.class.getResourceAsStream("/mapgame/data/world.txt")) {
             if (in == null) throw new IllegalStateException("Missing resource /mapgame/data/world.txt - run build.ps1");
             BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
             List<double[]> rings = null;
