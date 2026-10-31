@@ -9,6 +9,8 @@ import java.awt.GridLayout;
 import java.awt.LayoutManager;
 import java.awt.Rectangle;
 import java.awt.event.ActionEvent;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -21,18 +23,23 @@ import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.ButtonGroup;
+import javax.swing.DefaultListCellRenderer;
+import javax.swing.DefaultListModel;
 import javax.swing.JButton;
 import javax.swing.JComponent;
 import javax.swing.JFileChooser;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
+import javax.swing.JList;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JSplitPane;
+import javax.swing.JTabbedPane;
 import javax.swing.JTextArea;
 import javax.swing.JToggleButton;
 import javax.swing.KeyStroke;
+import javax.swing.ListSelectionModel;
 import javax.swing.Scrollable;
 import javax.swing.SwingUtilities;
 import javax.swing.UIManager;
@@ -63,6 +70,10 @@ public final class GameWindow extends JFrame {
     private final CardLayout cards = new CardLayout();
     private final JPanel root = new JPanel(cards);
     private final MainMenuPanel menu;
+    private final JTabbedPane logTabs = new JTabbedPane();
+    private final DefaultListModel<Game.Event> eventModel = new DefaultListModel<>();
+    private final JList<Game.Event> eventList = new JList<>(eventModel);
+    private int unreadEvents;
 
     private static final Path SAVE_DIR = Paths.get("saves");
     private static final Path QUICKSAVE = SAVE_DIR.resolve("quicksave" + SaveFile.EXTENSION);
@@ -204,6 +215,15 @@ public final class GameWindow extends JFrame {
             logArea.append(s + "\n");
             logArea.setCaretPosition(logArea.getDocument().getLength());
         };
+        eventModel.clear();
+        unreadEvents = 0;
+        game.eventSink = ev -> {
+            eventModel.add(0, ev);
+            if (eventModel.size() > Game.MAX_EVENTS) eventModel.removeElementAt(eventModel.size() - 1);
+            if (logTabs.getSelectedIndex() != 1) unreadEvents++;
+            updateTabTitles();
+        };
+        updateTabTitles();
         started = restored && g.player != null;
         acc = 0;
         lastAutosaveYear = g.day / 360;
@@ -385,7 +405,24 @@ public final class GameWindow extends JFrame {
         logArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 11));
         JPanel bottom = new JPanel(new BorderLayout(0, 6));
         bottom.setBorder(BorderFactory.createEmptyBorder(4, 8, 8, 8));
-        bottom.add(new JScrollPane(logArea), BorderLayout.CENTER);
+        eventList.setCellRenderer(new EventRenderer());
+        eventList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        eventList.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                int i = eventList.locationToIndex(e.getPoint());
+                if (i < 0 || !eventList.getCellBounds(i, i).contains(e.getPoint())) return;
+                Game.Event ev = eventModel.get(i);
+                if (ev.where() != null) map.showProvince(ev.where());
+            }
+        });
+        logTabs.addTab("", new JScrollPane(logArea));
+        logTabs.addTab("", new JScrollPane(eventList));
+        logTabs.addChangeListener(e -> {
+            if (logTabs.getSelectedIndex() == 1) unreadEvents = 0;
+            updateTabTitles();
+        });
+        bottom.add(logTabs, BorderLayout.CENTER);
         JPanel bottomButtons = new JPanel(new GridLayout(1, 3, 4, 0));
         for (JButton b : new JButton[] {saveBtn, loadBtn, menuBtn}) bottomButtons.add(b);
         bottom.add(bottomButtons, BorderLayout.SOUTH);
@@ -411,6 +448,8 @@ public final class GameWindow extends JFrame {
         bind("X", this::splitSelected);
         bind("C", this::mergeSelected);
         bind("G", this::showGroups);
+        bind("H", this::goHome);
+        bind("HOME", this::goHome);
         bind("F5", this::quickSave);
         bind("F9", this::quickLoad);
         bind("ESCAPE", map::clearSelection);
@@ -444,6 +483,10 @@ public final class GameWindow extends JFrame {
         refresh();
     }
 
+    private void goHome() {
+        if (started && game.player.capital != null) map.showProvince(game.player.capital);
+    }
+
     private void setSpeed(int s) {
         speed = started ? s : 0;
         speedBtns.get(speed).setSelected(true);
@@ -464,8 +507,31 @@ public final class GameWindow extends JFrame {
         saveBtn.setText(I18n.tr("btn.save"));
         loadBtn.setText(I18n.tr("btn.load"));
         updateModeText();
+        updateTabTitles();
+        eventList.repaint();
         map.repaint();
         refresh();
+    }
+
+    private void updateTabTitles() {
+        logTabs.setTitleAt(0, I18n.tr("tab.log"));
+        logTabs.setTitleAt(1, unreadEvents > 0 ? I18n.tr("tab.events.new", unreadEvents) : I18n.tr("tab.events"));
+    }
+
+    /** One line of the notification list: date and text, wrapped. */
+    private static final class EventRenderer extends DefaultListCellRenderer {
+        @Override
+        public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean selected, boolean focus) {
+            Game.Event ev = (Game.Event) value;
+            String text = Game.formatDate(ev.day()) + "  " + ev.text();
+            JLabel l = (JLabel) super.getListCellRendererComponent(list, "", index, selected, focus);
+            int width = Math.max(120, list.getWidth() - 24);
+            l.setText("<html><body style='width:" + width + "px'>" + text.replace("&", "&amp;").replace("<", "&lt;") + "</body></html>");
+            l.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 11));
+            l.setBorder(BorderFactory.createEmptyBorder(2, 4, 2, 4));
+            l.setToolTipText(null);
+            return l;
+        }
     }
 
     private void updateModeText() {

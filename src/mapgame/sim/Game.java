@@ -100,6 +100,29 @@ public final class Game {
         logSink.accept(date() + "  " + msg);
     }
 
+    /** A noteworthy happening for the notification list; {@code where} (may be null) is the place to jump to. */
+    public record Event(int day, String text, Province where) {
+    }
+
+    public static final int MAX_EVENTS = 300;
+    public final List<Event> events = new ArrayList<>();
+    public Consumer<Event> eventSink = e -> { };
+
+    /**
+     * Logs the message and, if the player is one of {@code involved} (or nobody is named: world news),
+     * also files it in the notification list.
+     */
+    public void report(String msg, Province where, Country... involved) {
+        log(msg);
+        boolean relevant = involved.length == 0;
+        for (Country c : involved) if (c != null && c == player) relevant = true;
+        if (!relevant) return;
+        Event e = new Event(day, msg, where);
+        events.add(e);
+        if (events.size() > MAX_EVENTS) events.remove(0);
+        eventSink.accept(e);
+    }
+
     // ---------------------------------------------------------------- diplomacy
 
     private static long key(Country a, Country b) {
@@ -130,7 +153,7 @@ public final class Game {
         if (atWar(a, b)) {
             if (!total || isTotalWar(a, b)) return false;
             totalWars.add(key(a, b));
-            log(I18n.tr("war.escalated", a.displayName(), b.displayName()));
+            report(I18n.tr("war.escalated", a.displayName(), b.displayName()), null, a, b);
             return true;
         }
         wars.put(key(a, b), day);
@@ -139,7 +162,7 @@ public final class Game {
             totalWars.add(key(a, b));
             totalWarsDeclared++;
         }
-        log(I18n.tr(total ? "war.declared.total" : "war.declared", a.displayName(), b.displayName()));
+        report(I18n.tr(total ? "war.declared.total" : "war.declared", a.displayName(), b.displayName()), null, a, b);
         return true;
     }
 
@@ -169,7 +192,7 @@ public final class Game {
         relocateCapital(b);
         a.truceUntil = Math.max(a.truceUntil, day + TRUCE_DAYS);
         b.truceUntil = Math.max(b.truceUntil, day + TRUCE_DAYS);
-        log(I18n.tr("peace.made", a.displayName(), b.displayName()) + (moved == 0 ? "" : " " + I18n.tr("peace.moved", moved)));
+        report(I18n.tr("peace.made", a.displayName(), b.displayName()) + (moved == 0 ? "" : " " + I18n.tr("peace.moved", moved)), null, a, b);
         evictArmies();
         checkElimination(a);
         checkElimination(b);
@@ -185,7 +208,7 @@ public final class Game {
         }
         if (best != null) {
             c.capital = best;
-            log(I18n.tr("capital.moved", c.displayName(), best.name));
+            report(I18n.tr("capital.moved", c.displayName(), best.name), best, c);
         }
     }
 
@@ -499,9 +522,9 @@ public final class Game {
         boolean playerInvolved = a.owner == player;
         if (best == null || a.strength <= 0) {
             a.dead = true;
-            if (playerInvolved) log(I18n.tr("army.destroyed", a.location.name));
+            if (playerInvolved) report(I18n.tr("army.destroyed", a.location.name), a.location, a.owner);
         } else {
-            if (playerInvolved) log(I18n.tr("army.routed", a.location.name));
+            if (playerInvolved) report(I18n.tr("army.routed", a.location.name), a.location, a.owner);
             a.moveTo(best);
             a.clearPath();
         }
@@ -538,9 +561,9 @@ public final class Game {
             Country victim = p.owner;
             p.controller = a.owner;
             mapDirty = true;
-            if (a.owner == player) log(I18n.tr("occupied.us", p.name, victim.displayName()));
-            else if (victim == player) log(I18n.tr("occupied.them", p.name, a.owner.displayName()));
-            if (victim.capital == p && victim.alive) log(I18n.tr("capital.fallen", victim.displayName(), p.name, a.owner.displayName()));
+            if (a.owner == player) report(I18n.tr("occupied.us", p.name, victim.displayName()), p, player);
+            else if (victim == player) report(I18n.tr("occupied.them", p.name, a.owner.displayName()), p, player);
+            if (victim.capital == p && victim.alive) report(I18n.tr("capital.fallen", victim.displayName(), p.name, a.owner.displayName()), p, victim, a.owner);
             checkElimination(victim);
         }
     }
@@ -563,7 +586,7 @@ public final class Game {
         wars.keySet().removeIf(k -> (k >> 32) == c.id || (k & 0xFFFFFFFFL) == c.id);
         totalWars.removeIf(k -> (k >> 32) == c.id || (k & 0xFFFFFFFFL) == c.id);
         mapDirty = true;
-        log(I18n.tr("country.eliminated", c.displayName()));
+        report(I18n.tr("country.eliminated", c.displayName()), null);
     }
 
     private static boolean holdsOwnLand(Country c) {

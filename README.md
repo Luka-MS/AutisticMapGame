@@ -68,10 +68,11 @@ Pushing a tag like `v1.0.0` triggers [`.github/workflows/release.yml`](.github/w
 | X | Split the selected army in half (the new army gets selected) |
 | C | Merge idle friendly armies in the same province into the selected one |
 | G | Open the army group window |
+| H / Home | Jump to your capital |
 | F5 / F9 | Quick save / quick load |
 | Esc | Deselect |
 
-The divider between the control menu and the log on the right can be dragged up and down to resize the log.
+The divider between the control menu and the log on the right can be dragged up and down to resize the log. The bottom-left **minimap** shows the whole world with your current view; click or drag on it to jump. Hovering a province shows a tooltip (owner, population, income, city, armies). The **Events** tab next to the log lists what matters to you (wars, peace, lost and conquered provinces, lost armies, eliminated nations); a click on an entry jumps to the place and the tab title counts new events.
 
 ### Armies
 

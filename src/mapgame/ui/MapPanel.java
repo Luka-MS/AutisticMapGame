@@ -9,8 +9,10 @@ import java.awt.Font;
 import java.awt.FontMetrics;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
+import java.awt.Image;
 import java.awt.Rectangle;
 import java.awt.RenderingHints;
+import java.awt.Shape;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseWheelEvent;
@@ -19,12 +21,14 @@ import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import javax.swing.JPanel;
 import javax.swing.SwingUtilities;
+import javax.swing.ToolTipManager;
 import mapgame.i18n.I18n;
 import mapgame.model.Army;
 import mapgame.model.ArmyGroup;
@@ -60,12 +64,17 @@ public final class MapPanel extends JPanel {
     private final Highlight selectionHl = new Highlight(0x66FFFFFF), hoverHl = new Highlight(0x30FFFFFF);
 
     private int pressX, pressY, lastX, lastY;
-    private boolean dragged, boxing, shiftAtPress;
+    private boolean dragged, boxing, shiftAtPress, miniDrag;
     private static final Color BOX_FILL = new Color(255, 255, 255, 40), BOX_LINE = new Color(255, 255, 255, 220);
+
+    private static final int MINI_W = 240, MINI_H = 135, MINI_MARGIN = 10;
+    private BufferedImage miniPolitical, miniTerrain;
 
     public MapPanel() {
         setBackground(SEA);
         setFocusable(true);
+        ToolTipManager.sharedInstance().registerComponent(this);
+        ToolTipManager.sharedInstance().setInitialDelay(350);
         MouseAdapter mouse = new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
@@ -75,10 +84,16 @@ public final class MapPanel extends JPanel {
                 dragged = false;
                 boxing = false;
                 shiftAtPress = e.isShiftDown();
+                miniDrag = game != null && SwingUtilities.isLeftMouseButton(e) && miniRect().contains(e.getPoint());
+                if (miniDrag) centerFromMinimap(e.getX(), e.getY());
             }
 
             @Override
             public void mouseDragged(MouseEvent e) {
+                if (miniDrag) {
+                    centerFromMinimap(e.getX(), e.getY());
+                    return;
+                }
                 boolean left = SwingUtilities.isLeftMouseButton(e);
                 if (!left && !SwingUtilities.isRightMouseButton(e) && !SwingUtilities.isMiddleMouseButton(e)) return;
                 if (Math.abs(e.getX() - pressX) + Math.abs(e.getY() - pressY) > 4) dragged = true;
@@ -103,6 +118,10 @@ public final class MapPanel extends JPanel {
             @Override
             public void mouseReleased(MouseEvent e) {
                 if (game == null) return;
+                if (miniDrag) {
+                    miniDrag = false;
+                    return;
+                }
                 if (boxing) {
                     boxing = false;
                     boxSelect();
@@ -143,6 +162,8 @@ public final class MapPanel extends JPanel {
         shownGroup = null;
         terrain = MapRenderer.newImage();
         MapRenderer.render(g.world, terrain, false);
+        miniTerrain = shrink(terrain);
+        miniPolitical = null;
         g.mapDirty = true;
         fitToView();
         selectionListener.run();
@@ -222,6 +243,7 @@ public final class MapPanel extends JPanel {
             game.mapDirty = false;
             game.world.recomputeLabels();
             MapRenderer.render(game.world, political, true);
+            miniPolitical = shrink(political);
         }
         if (armySel.removeIf(a -> a.dead)) {
             selectedArmy = armySel.isEmpty() ? null : armySel.iterator().next();
@@ -342,6 +364,7 @@ public final class MapPanel extends JPanel {
         drawGroupFront(g);
         drawArmyPath(g);
         drawArmies(g);
+        drawMinimap(g);
         if (boxing) {
             int x = Math.min(pressX, lastX), y = Math.min(pressY, lastY);
             int w = Math.abs(lastX - pressX), h = Math.abs(lastY - pressY);
@@ -378,6 +401,89 @@ public final class MapPanel extends JPanel {
                 g.drawString(label, x + s, y + fm.getAscent() / 2);
             }
         }
+    }
+
+    // ---------------------------------------------------------------- minimap and tooltip
+
+    private Rectangle miniRect() {
+        return new Rectangle(MINI_MARGIN, getHeight() - MINI_H - MINI_MARGIN, MINI_W, MINI_H);
+    }
+
+    private static BufferedImage shrink(BufferedImage src) {
+        BufferedImage out = new BufferedImage(MINI_W, MINI_H, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = out.createGraphics();
+        g.drawImage(src.getScaledInstance(MINI_W, MINI_H, Image.SCALE_AREA_AVERAGING), 0, 0, null);
+        g.dispose();
+        return out;
+    }
+
+    private void centerFromMinimap(int sx, int sy) {
+        Rectangle r = miniRect();
+        double wx = (sx - r.x) / (double) MINI_W * W, wy = (sy - r.y) / (double) MINI_H * H;
+        offX = getWidth() / 2.0 - wx * zoom;
+        offY = getHeight() / 2.0 - wy * zoom;
+        clampView();
+        repaint();
+    }
+
+    private void drawMinimap(Graphics2D g) {
+        BufferedImage img = mode == Mode.POLITICAL && miniPolitical != null ? miniPolitical : miniTerrain;
+        if (img == null || getWidth() < MINI_W * 2 || getHeight() < MINI_H * 2) return;
+        Rectangle r = miniRect();
+        g.setColor(new Color(0, 0, 0, 200));
+        g.fillRect(r.x - 2, r.y - 2, r.width + 4, r.height + 4);
+        g.drawImage(img, r.x, r.y, null);
+        double sx = MINI_W / (double) W, sy = MINI_H / (double) H;
+        int vx = r.x + (int) Math.round(-offX / zoom * sx), vy = r.y + (int) Math.round(-offY / zoom * sy);
+        int vw = (int) Math.round(getWidth() / zoom * sx), vh = (int) Math.round(getHeight() / zoom * sy);
+        Shape oldClip = g.getClip();
+        g.clipRect(r.x, r.y, r.width, r.height);
+        g.setColor(Color.WHITE);
+        g.setStroke(new BasicStroke(1.5f));
+        g.drawRect(vx, vy, vw, vh);
+        g.setStroke(new BasicStroke(1f));
+        g.setClip(oldClip);
+    }
+
+    @Override
+    public String getToolTipText(MouseEvent e) {
+        if (game == null || miniRect().contains(e.getPoint()) || boxing) return null;
+        Province p = provinceAt(e.getX(), e.getY());
+        if (p == null) return null;
+        StringBuilder sb = new StringBuilder("<html><b>").append(html(p.name)).append("</b> (").append(html(p.terrain.label())).append(')');
+        if (p.isLand()) {
+            sb.append("<br>").append(html(I18n.tr("info.owner", p.owner == null ? I18n.tr("info.unclaimed") : p.owner.displayName())));
+            if (p.owner != null && p.controller != p.owner) {
+                sb.append("<br>").append(html(I18n.tr("info.occupied", p.controller.displayName())));
+            }
+            sb.append("<br>").append(html(I18n.tr("info.population", p.population, p.income(game.day))).replace("\n", "<br>"));
+            if (p.city != null) sb.append("<br>").append(html(I18n.tr("info.city", p.city, p.cityPopulation)));
+            if (p.isCapital()) sb.append("<br><b>").append(html(I18n.tr("info.capital", p.owner.displayName()))).append("</b>");
+            Map<Country, Integer> here = new LinkedHashMap<>();
+            for (Army a : game.armies) if (!a.dead && a.location == p) here.merge(a.owner, a.strength, Integer::sum);
+            if (!here.isEmpty()) {
+                StringBuilder list = new StringBuilder();
+                for (Map.Entry<Country, Integer> en : here.entrySet()) {
+                    list.append(list.length() > 0 ? ", " : "").append(en.getKey().displayName()).append(' ')
+                            .append(String.format(I18n.locale(), "%,d", en.getValue()));
+                }
+                sb.append("<br>").append(html(I18n.tr("tip.armies", list)));
+            }
+        }
+        return sb.append("</html>").toString();
+    }
+
+    private static String html(String s) {
+        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+    }
+
+    /** Selects a province and brings it to the centre of the view (used by the notification list). */
+    public void showProvince(Province p) {
+        if (p == null || game == null) return;
+        selected = p;
+        setArmySelection(null);
+        selectionListener.run();
+        centerOn(p);
     }
 
     private void drawCountryLabels(Graphics2D g) {
