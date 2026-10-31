@@ -18,6 +18,15 @@ public final class Country {
     public double labelX, labelY;
     /** AI countries will not start new wars before this day. */
     public int truceUntil;
+    /** Research level per {@link TechField}. */
+    public final int[] tech = new int[TechField.values().length];
+    /** Field currently being researched (null = idle) and its progress in research points. */
+    public TechField researching;
+    public double researchProgress;
+
+    public int techLevel(TechField f) {
+        return tech[f.ordinal()];
+    }
 
     /** The name in the current language; invented nations keep their generated name. */
     public String displayName() {

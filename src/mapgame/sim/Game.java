@@ -24,6 +24,7 @@ import mapgame.model.MapGenerator;
 import mapgame.model.MapKind;
 import mapgame.model.Province;
 import mapgame.model.RealMapGenerator;
+import mapgame.model.TechField;
 import mapgame.model.World;
 
 /** The whole simulation: calendar, wars, armies, economy. */
@@ -377,19 +378,67 @@ public final class Game {
     public double monthlyIncome(Country c) {
         double inc = 0;
         for (Province p : c.provinces) if (p.controller == c) inc += p.income(day);
-        return inc;
+        return inc * (1 + 0.08 * c.techLevel(TechField.ECONOMY));
     }
 
     public double monthlyUpkeep(Country c) {
         double u = 0;
         for (Army a : armies) if (a.owner == c) u += a.strength * UPKEEP_PER_MAN * a.type.upkeepFactor;
-        return u;
+        return u * (1 - 0.04 * c.techLevel(TechField.ADMIN));
     }
 
     public int monthlyManpower(Country c) {
         int mp = 0;
         for (Province p : c.provinces) if (p.controller == c) mp += p.manpowerGain(day);
-        return mp;
+        return (int) (mp * (1 + 0.1 * c.techLevel(TechField.ADMIN)));
+    }
+
+    // ---------------------------------------------------------------- research
+
+    /** Research points a nation earns per month: bigger nations and administrative progress research faster. */
+    public double researchRate(Country c) {
+        return Math.min(5.0, 1 + c.provinces.size() * 0.08) * (1 + 0.1 * c.techLevel(TechField.ADMIN));
+    }
+
+    /** Points still missing for the current project. */
+    public int researchCost(Country c, TechField f) {
+        return TechField.cost(c.techLevel(f));
+    }
+
+    /** Starts researching {@code f}; switching to another field discards the progress made so far. */
+    public boolean startResearch(Country c, TechField f) {
+        if (f == null || c.techLevel(f) >= TechField.MAX_LEVEL) return false;
+        if (c.researching != f) c.researchProgress = 0;
+        c.researching = f;
+        return true;
+    }
+
+    private void researchTick(Country c) {
+        if (c.researching == null) {
+            if (c != player) aiPickResearch(c);
+            if (c.researching == null) return;
+        }
+        c.researchProgress += researchRate(c);
+        TechField f = c.researching;
+        if (c.researchProgress < researchCost(c, f)) return;
+        c.tech[f.ordinal()]++;
+        c.researchProgress = 0;
+        c.researching = null;
+        report(I18n.tr("tech.done", c.displayName(), f.label(), c.techLevel(f)), null, c);
+    }
+
+    /** AI research: military first while at war, otherwise economy and administration. */
+    private void aiPickResearch(Country c) {
+        boolean atWar = !enemiesOf(c).isEmpty();
+        TechField[] order = atWar
+                ? new TechField[] {TechField.MILITARY, TechField.ECONOMY, TechField.ADMIN}
+                : new TechField[] {TechField.ECONOMY, TechField.ADMIN, TechField.MILITARY};
+        TechField best = null;
+        for (TechField f : order) {
+            if (c.techLevel(f) >= TechField.MAX_LEVEL) continue;
+            if (best == null || c.techLevel(f) + 1 < c.techLevel(best)) best = f;
+        }
+        if (best != null) startResearch(c, best);
     }
 
     // ---------------------------------------------------------------- orders
@@ -944,6 +993,7 @@ public final class Game {
             if (!c.alive) continue;
             c.gold += monthlyIncome(c) - monthlyUpkeep(c);
             c.manpower += monthlyManpower(c);
+            researchTick(c);
             if (c.gold < 0) {
                 for (Army a : armies) if (a.owner == c) a.strength = (int) (a.strength * 0.97);
             }

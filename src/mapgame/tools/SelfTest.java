@@ -37,6 +37,7 @@ public final class SelfTest {
         run("army types and experience", SelfTest::armyTypes);
         run("fog of war", SelfTest::fogOfWar);
         run("buildings and unrest", SelfTest::buildingsAndUnrest);
+        run("research", SelfTest::research);
         run("save and load", SelfTest::saveLoad);
         System.out.printf("%d checks, %d failed%n", checks, failures);
         System.exit(failures == 0 ? 0 : 1);
@@ -269,6 +270,29 @@ public final class SelfTest {
         g.armies.add(new Army(900_100, a, held2, 1000));
         for (int i = 0; i < 270; i++) g.tickDay();
         check(held2.controller == a, "a garrison keeps an occupied province");
+    }
+
+    private static void research() {
+        Game g = newGame();
+        Country me = g.world.countries.get(0);
+        g.player = me;
+        check(g.startResearch(me, mapgame.model.TechField.ECONOMY), "research can be started");
+        double before = g.monthlyIncome(me);
+        int months = 0;
+        while (me.techLevel(mapgame.model.TechField.ECONOMY) == 0 && months < 60) {
+            for (int i = 0; i < 30; i++) g.tickDay();
+            months++;
+        }
+        check(me.techLevel(mapgame.model.TechField.ECONOMY) == 1, "research finishes (" + months + " months)");
+        check(g.monthlyIncome(me) > before * 1.05, "economy research raises the income");
+        check(me.researching == null, "the player picks the next project himself");
+        Army a = new Army(1, me, me.provinces.get(0), 1000);
+        double base = a.attackBonus();
+        me.tech[mapgame.model.TechField.MILITARY.ordinal()] = 3;
+        check(a.attackBonus() > base && a.toughness() < 1, "military research strengthens armies");
+        boolean aiResearches = false;
+        for (Country c : g.world.countries) if (c != me && (c.researching != null || c.techLevel(mapgame.model.TechField.ECONOMY) > 0)) aiResearches = true;
+        check(aiResearches, "AI nations research by themselves");
     }
 
     private static void fogOfWar() {

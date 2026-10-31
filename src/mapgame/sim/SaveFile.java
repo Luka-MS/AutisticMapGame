@@ -22,6 +22,7 @@ import mapgame.model.Building;
 import mapgame.model.Country;
 import mapgame.model.MapKind;
 import mapgame.model.Province;
+import mapgame.model.TechField;
 
 /**
  * Saves and loads a game. Only the changing state is stored; the map itself is recreated from
@@ -30,8 +31,8 @@ import mapgame.model.Province;
 public final class SaveFile {
     public static final String EXTENSION = ".sav";
     private static final int MAGIC = 0x4D47534D;
-    /** 2: conquest day. 3: capitals. 4: group reinforcement. 5: alliances. 6: army types. 7: fog. 8: buildings. Older versions load too. */
-    private static final int VERSION = 8;
+    /** Format version; each feature added fields (2 conquest day ... 8 buildings, 9 research). Older versions load too. */
+    private static final int VERSION = 9;
 
     private SaveFile() {
     }
@@ -81,6 +82,9 @@ public final class SaveFile {
             out.writeDouble(c.gold);
             out.writeInt(c.manpower);
             out.writeInt(c.truceUntil);
+            for (int lvl : c.tech) out.writeByte(lvl);
+            out.writeInt(c.researching == null ? -1 : c.researching.ordinal());
+            out.writeDouble(c.researchProgress);
             out.writeInt(c.capital == null ? -1 : c.capital.id);
             out.writeInt(c.provinces.size());
             for (Province p : c.provinces) out.writeInt(p.id);
@@ -173,6 +177,12 @@ public final class SaveFile {
             c.gold = in.readDouble();
             c.manpower = in.readInt();
             c.truceUntil = in.readInt();
+            if (version >= 9) {
+                for (int k = 0; k < c.tech.length; k++) c.tech[k] = in.readByte();
+                int field = in.readInt();
+                c.researching = field < 0 ? null : TechField.values()[field];
+                c.researchProgress = in.readDouble();
+            }
             if (version >= 3) {
                 int capital = in.readInt();
                 if (capital >= 0) c.capital = g.world.provinces.get(capital);

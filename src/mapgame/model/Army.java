@@ -34,14 +34,14 @@ public final class Army {
         this.type = type;
     }
 
-    /** Damage dealt multiplier from experience (up to +40%). */
+    /** Damage dealt multiplier from experience (up to +40%) and military research. */
     public double attackBonus() {
-        return 1 + experience / 250;
+        return (1 + experience / 250) * (1 + 0.06 * owner.techLevel(TechField.MILITARY));
     }
 
-    /** Damage taken multiplier from experience (down to 75%). */
+    /** Damage taken multiplier from experience (down to 75%) and military research. */
     public double toughness() {
-        return 1 - experience / 400;
+        return (1 - experience / 400) * (1 - 0.04 * owner.techLevel(TechField.MILITARY));
     }
 
     /** New men join untrained and water down the experience. */

@@ -31,7 +31,7 @@ Ideas and planned work for Map Game. Tick items off (`[x]`) as they are done.
 ## Economy and nation management
 
 - [x] **Buildings and provinces:** markets, barracks, forts and roads (up to 3 / 3 / 3 / 2 levels, 60 days each, built in the Nation window). Occupied provinces without a garrison build up unrest and rebel against the occupier after about 250 days; a garrison keeps the peace. The AI develops its richest provinces and fortifies the front.
-- [ ] **Technology / research tree:** military and economic upgrades over time.
+- [x] **Technology / research:** three fields (military, economy, administration) with five levels each, researched in the Nation window; bigger nations research faster. The AI researches by itself (military first at war).
 - [ ] **Events and decisions:** random events, civil wars, revolutions, treaties.
 - [ ] **Government and policies:** conscription levels, war economy, taxes.
 
