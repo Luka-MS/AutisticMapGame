@@ -50,6 +50,7 @@ import javax.swing.filechooser.FileNameExtensionFilter;
 import mapgame.i18n.I18n;
 import mapgame.model.Army;
 import mapgame.model.ArmyType;
+import mapgame.model.Building;
 import mapgame.model.Country;
 import mapgame.model.MapKind;
 import mapgame.model.Province;
@@ -64,11 +65,12 @@ public final class GameWindow extends JFrame {
     private final JLabel dateLabel = new JLabel();
     private final JTextArea status = textArea(5), info = textArea(8), logArea = new JTextArea();
     private final JButton startBtn = button(), recruitBtn = button(), splitBtn = button(), mergeBtn = button(),
-            groupsBtn = button(), warBtn = button(), totalWarBtn = button(), peaceBtn = button(), allianceBtn = button(),
+            groupsBtn = button(), warBtn = button(), totalWarBtn = button(), peaceBtn = button(), allianceBtn = button(), nationBtn = button(),
             menuBtn = button(), saveBtn = button(), loadBtn = button(), modeBtn = button(), fogBtn = button();
     private final List<JToggleButton> speedBtns = new ArrayList<>();
     private JSplitPane sideSplit;
     private final ArmyGroupDialog groupDialog;
+    private final NationDialog nationDialog;
     private final CardLayout cards = new CardLayout();
     private final JPanel root = new JPanel(cards);
     private final MainMenuPanel menu;
@@ -129,6 +131,7 @@ public final class GameWindow extends JFrame {
         setSize(1380, 820);
         setLocationRelativeTo(null);
         groupDialog = new ArmyGroupDialog(this, map);
+        nationDialog = new NationDialog(this, map);
         applyLanguage();
 
         startBtn.addActionListener(e -> startGame());
@@ -138,6 +141,7 @@ public final class GameWindow extends JFrame {
         modeBtn.addActionListener(e -> toggleMode());
         fogBtn.addActionListener(e -> toggleFog());
         groupsBtn.addActionListener(e -> showGroups());
+        nationBtn.addActionListener(e -> showNation(null));
         recruitBtn.addActionListener(e -> {
             Province p = map.selectedProvince();
             if (p != null && game.recruit(game.player, p, (ArmyType) typeBox.getSelectedItem()) == null) game.log(I18n.tr("log.cannot.recruit"));
@@ -191,6 +195,7 @@ public final class GameWindow extends JFrame {
     private void showMenu() {
         inMenu = true;
         groupDialog.setVisible(false);
+        nationDialog.setVisible(false);
         menu.setBusy(null);
         menu.setCanResume(game != null);
         cards.show(root, "menu");
@@ -250,6 +255,7 @@ public final class GameWindow extends JFrame {
         logArea.setText("");
         setSpeed(0);
         groupDialog.bind(game);
+        nationDialog.bind(game);
         showGame();
         map.setGame(game);
         if (started) {
@@ -345,6 +351,17 @@ public final class GameWindow extends JFrame {
         }
     }
 
+    private void showNation(String page) {
+        if (!started) return;
+        if (page == null) {
+            nationDialog.setVisible(true);
+            nationDialog.toFront();
+            nationDialog.refresh();
+        } else {
+            nationDialog.show(page);
+        }
+    }
+
     private void showGroups() {
         if (!started) return;
         groupDialog.setVisible(true);
@@ -406,7 +423,7 @@ public final class GameWindow extends JFrame {
 
         JPanel buttons = new JPanel();
         buttons.setLayout(new BoxLayout(buttons, BoxLayout.Y_AXIS));
-        for (JComponent b : new JComponent[] {startBtn, typeBox, recruitBtn, splitBtn, mergeBtn, groupsBtn, warBtn, totalWarBtn, peaceBtn, allianceBtn}) buttons.add(left(b));
+        for (JComponent b : new JComponent[] {startBtn, typeBox, recruitBtn, splitBtn, mergeBtn, groupsBtn, nationBtn, warBtn, totalWarBtn, peaceBtn, allianceBtn}) buttons.add(left(b));
 
         JPanel top = new WidthTrackingPanel(new BorderLayout(0, 6));
         top.setBorder(BorderFactory.createEmptyBorder(8, 8, 4, 8));
@@ -471,6 +488,7 @@ public final class GameWindow extends JFrame {
         bind("X", this::splitSelected);
         bind("C", this::mergeSelected);
         bind("G", this::showGroups);
+        bind("N", () -> showNation(null));
         bind("H", this::goHome);
         bind("HOME", this::goHome);
         bind("F5", this::quickSave);
@@ -526,6 +544,7 @@ public final class GameWindow extends JFrame {
         splitBtn.setText(I18n.tr("btn.split"));
         mergeBtn.setText(I18n.tr("btn.merge"));
         groupsBtn.setText(I18n.tr("btn.groups"));
+        nationBtn.setText(I18n.tr("btn.nation"));
         menuBtn.setText(I18n.tr("btn.menu"));
         saveBtn.setText(I18n.tr("btn.save"));
         loadBtn.setText(I18n.tr("btn.load"));
@@ -663,6 +682,8 @@ public final class GameWindow extends JFrame {
         peaceBtn.setEnabled(atWarWithSel && !totalWithSel);
         peaceBtn.setText(I18n.tr(totalWithSel ? "btn.peace.none" : "btn.peace"));
         groupsBtn.setEnabled(playing);
+        nationBtn.setEnabled(playing);
+        nationDialog.refresh();
         warBtn.setText(foreign ? I18n.tr("btn.war.on", sel.owner.displayName()) : I18n.tr("btn.war"));
         if (groupDialog.isVisible()) groupDialog.refresh();
     }
@@ -679,6 +700,12 @@ public final class GameWindow extends JFrame {
         if (p.owner != null && p.controller != p.owner) sb.append(I18n.tr("info.occupied", p.controller.displayName())).append('\n');
         if (!p.ferryTo.isEmpty()) sb.append(I18n.tr("info.ferry", Province.FERRY_DAYS)).append('\n');
         sb.append(I18n.tr("info.travel", p.terrain.moveDays)).append('\n');
+        StringBuilder built = new StringBuilder();
+        for (Building b : Building.values()) {
+            if (p.level(b) > 0) built.append(built.length() > 0 ? ", " : "").append(b.label()).append(' ').append(p.level(b));
+        }
+        if (built.length() > 0) sb.append(I18n.tr("info.buildings", built)).append('\n');
+        if (p.unrest > 0) sb.append(I18n.tr("info.unrest", (int) p.unrest)).append('\n');
         if (p.owner != null) {
             Country c = p.owner;
             sb.append('\n').append(I18n.tr("info.country", c.displayName(), c.provinces.size(), game.strength(c))).append('\n');

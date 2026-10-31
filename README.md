@@ -71,6 +71,7 @@ Pushing a tag like `v1.0.0` triggers [`.github/workflows/release.yml`](.github/w
 | X | Split the selected army in half (the new army gets selected) |
 | C | Merge idle friendly armies in the same province into the selected one |
 | G | Open the army group window |
+| N | Open the nation window (buildings and more) |
 | H / Home | Jump to your capital |
 | F5 / F9 | Quick save / quick load |
 | Esc | Deselect |
@@ -98,6 +99,13 @@ Open the window with **G**:
 Army counters of a group carry a `G<number>` tag. The selected group shows its front provinces as circles and the assignment of each army as dashed lines.
 
 **Automatic reinforcement:** tick *Reinforce automatically* and set a *target strength*. Whenever the group is below it, armies standing in your own territory are refilled from the manpower pool (500 men per planning round) and, if that is not enough, new armies are raised in the province closest to the front. The usual recruit prices apply (0.04 gold and 1 manpower per man) and 50 gold are always kept in reserve.
+
+### Nation management
+
+Press **N** (or *Nation management*) to open the nation window. It collects everything that is not about armies; more pages are listed below.
+
+- **Buildings:** select one of your provinces and build a *market* (+20% gold per level), *barracks* (+20% manpower), *fort* (defenders take 15% less damage) or *roads* (armies cross 15% faster). Construction takes 60 days and costs more with every level.
+- **Unrest:** a province held by an enemy without a garrison gains unrest; at 100 the people rise up and the province returns to its owner. Keep an army in conquered provinces.
 
 ### Wars and total war
 

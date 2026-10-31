@@ -18,6 +18,7 @@ import mapgame.i18n.I18n;
 import mapgame.model.Army;
 import mapgame.model.ArmyGroup;
 import mapgame.model.ArmyType;
+import mapgame.model.Building;
 import mapgame.model.Country;
 import mapgame.model.MapGenerator;
 import mapgame.model.MapKind;
@@ -608,6 +609,58 @@ public final class Game {
         return null;
     }
 
+    // ---------------------------------------------------------------- buildings and unrest
+
+    /** Unrest gained per day while an enemy holds a province without a garrison, and lost per day with one. */
+    public static final double UNREST_RISE = 0.4, UNREST_GARRISON = -0.3, UNREST_CALM = 1.0;
+
+    /** Gold the next level of {@code b} costs in {@code p}, or -1 when it cannot be built. */
+    public int buildCost(Province p, Building b) {
+        if (p == null || !p.isLand() || p.owner == null || p.building != null) return -1;
+        int level = p.level(b);
+        return level >= b.maxLevel ? -1 : b.cost(level);
+    }
+
+    /** Starts construction; the owner must hold the province. */
+    public boolean build(Country c, Province p, Building b) {
+        int cost = buildCost(p, b);
+        if (cost < 0 || p.owner != c || p.controller != c || c.gold < cost) return false;
+        c.gold -= cost;
+        p.building = b;
+        p.buildDone = day + Building.BUILD_DAYS;
+        return true;
+    }
+
+    private void updateProvinces() {
+        for (Province p : world.provinces) {
+            if (p.owner == null) continue;
+            if (p.building != null && day >= p.buildDone) {
+                p.buildings[p.building.ordinal()]++;
+                if (p.owner == player) report(I18n.tr("building.done", p.building.label(), p.name), p, p.owner);
+                p.building = null;
+            }
+            if (p.controller == p.owner) {
+                if (p.unrest > 0) p.unrest = Math.max(0, p.unrest - UNREST_CALM);
+                continue;
+            }
+            boolean garrison = false;
+            for (Army a : armies) {
+                if (!a.dead && a.location == p && a.owner == p.controller) {
+                    garrison = true;
+                    break;
+                }
+            }
+            p.unrest = Math.max(0, Math.min(100, p.unrest + (garrison ? UNREST_GARRISON : UNREST_RISE)));
+            if (p.unrest >= 100) {
+                Country holder = p.controller;
+                p.controller = p.owner;
+                p.unrest = 0;
+                mapDirty = true;
+                report(I18n.tr("rebels.free", p.name, p.owner.displayName(), holder.displayName()), p, p.owner, holder);
+            }
+        }
+    }
+
     // ---------------------------------------------------------------- fog of war
 
     /** When set, the player only sees foreign armies near his own land and armies (see {@link #visibleTo}). */
@@ -708,6 +761,7 @@ public final class Game {
         mergeArmies();
         resolveOccupation();
         if (day % 5 == 0) applyAttrition();
+        updateProvinces();
         if (day % 3 == 0) {
             for (ArmyGroup grp : new ArrayList<>(groups)) {
                 if (grp.reinforce) reinforce(grp);
@@ -765,7 +819,7 @@ public final class Game {
                     if (i == j || !atWar(target.owner, striker.owner)) continue;
                     double d = striker.strength * 0.04 * (0.8 + 0.4 * rnd.nextDouble());
                     d *= striker.type.attackOn(prov.terrain) * striker.attackBonus();
-                    if (target.owner == prov.controller) d /= prov.terrain.defense;
+                    if (target.owner == prov.controller) d /= prov.terrain.defense * (1 + 0.15 * prov.level(Building.FORT));
                     dmg[i] += d * vulnerability;
                 }
             }

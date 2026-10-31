@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.Set;
 import mapgame.model.Army;
 import mapgame.model.ArmyType;
+import mapgame.model.Building;
 import mapgame.model.Country;
 import mapgame.model.Province;
 import mapgame.model.Terrain;
@@ -21,6 +22,7 @@ final class Ai {
         makePeace(g, c);
         if (!c.alive) return;
         diplomacy(g, c);
+        build(g, c);
         joinCoalition(g, c);
         List<Country> foes = g.enemiesOf(c);
         if (!foes.isEmpty()) attack(g, c);
@@ -31,6 +33,32 @@ final class Ai {
     /** A nation in debt cannot pay its soldiers: it sends some of them home until the budget is balanced. */
     private static void controlDebt(Game g, Country c) {
         if (g.monthlyUpkeep(c) > g.monthlyIncome(c)) g.demobilize(c, 0.10);
+    }
+
+    /** Once a month a nation with spare gold develops its richest province, or fortifies a border province at war. */
+    private static void build(Game g, Country c) {
+        if (g.day % 30 != 0 || c.gold < 250 || c.provinces.isEmpty() || g.rnd.nextDouble() > 0.6) return;
+        boolean atWar = !g.enemiesOf(c).isEmpty();
+        Province best = null;
+        Building what = null;
+        for (Province p : c.provinces) {
+            if (p.controller != c || p.building != null) continue;
+            Building b = null;
+            if (atWar && p.level(Building.FORT) < 2 && facesEnemy(g, c, p)) b = Building.FORT;
+            else if (p.level(Building.MARKET) < 2) b = Building.MARKET;
+            else if (p.level(Building.BARRACKS) < 1) b = Building.BARRACKS;
+            if (b == null) continue;
+            if (best == null || b == Building.FORT && what != Building.FORT || b == what && p.population > best.population) {
+                best = p;
+                what = b;
+            }
+        }
+        if (best != null) g.build(c, best, what);
+    }
+
+    private static boolean facesEnemy(Game g, Country c, Province p) {
+        for (Province q : p.neighbors) if (q.owner != null && g.atWar(c, q.owner)) return true;
+        return false;
     }
 
     /** Once a month: drop an alliance with a hegemon, and look for a new partner against a shared threat. */

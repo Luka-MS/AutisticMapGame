@@ -37,8 +37,21 @@ public final class Province {
     public static final int FERRY_DAYS = 4;
 
     /** Days an army needs to enter this province coming from {@code from}. */
-    public int travelDays(Province from) {
-        return terrain.moveDays + (ferryTo.contains(from) ? FERRY_DAYS : 0);
+    public double travelDays(Province from) {
+        double days = terrain.moveDays * (1 - 0.15 * level(Building.ROADS));
+        return Math.max(1, days) + (ferryTo.contains(from) ? FERRY_DAYS : 0);
+    }
+
+    /** Current level of each {@link Building}. */
+    public final int[] buildings = new int[Building.values().length];
+    /** Building under construction (null if none) and the day it is finished. */
+    public Building building;
+    public int buildDone;
+    /** 0 - 100: grows while an enemy holds the province without a garrison; at 100 the people rise up. */
+    public double unrest;
+
+    public int level(Building b) {
+        return buildings[b.ordinal()];
     }
 
     public boolean isLand() {
@@ -79,12 +92,12 @@ public final class Province {
 
     /** Full gold per month, ignoring integration. */
     public double income() {
-        return population / 10000.0 * wealth();
+        return population / 10000.0 * wealth() * (1 + 0.2 * level(Building.MARKET));
     }
 
     /** Manpower per month. */
     public int manpowerGain() {
-        return (int) (population * 0.0006 * wealth());
+        return (int) (population * 0.0006 * wealth() * (1 + 0.2 * level(Building.BARRACKS)));
     }
 
     /** Manpower per month on the given day. */

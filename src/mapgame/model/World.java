@@ -33,6 +33,8 @@ public final class World {
         if (p.owner != null) p.owner.provinces.remove(p);
         p.owner = c;
         p.controller = c;
+        p.building = null;
+        p.unrest = 0;
         if (c != null) c.provinces.add(p);
     }
 

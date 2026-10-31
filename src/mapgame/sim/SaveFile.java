@@ -18,6 +18,7 @@ import mapgame.i18n.I18n;
 import mapgame.model.Army;
 import mapgame.model.ArmyGroup;
 import mapgame.model.ArmyType;
+import mapgame.model.Building;
 import mapgame.model.Country;
 import mapgame.model.MapKind;
 import mapgame.model.Province;
@@ -29,8 +30,8 @@ import mapgame.model.Province;
 public final class SaveFile {
     public static final String EXTENSION = ".sav";
     private static final int MAGIC = 0x4D47534D;
-    /** 2: conquest day. 3: capitals. 4: group reinforcement. 5: alliances. 6: army types. 7: fog of war. Older versions load too. */
-    private static final int VERSION = 7;
+    /** 2: conquest day. 3: capitals. 4: group reinforcement. 5: alliances. 6: army types. 7: fog. 8: buildings. Older versions load too. */
+    private static final int VERSION = 8;
 
     private SaveFile() {
     }
@@ -88,6 +89,11 @@ public final class SaveFile {
             out.writeInt(p.owner == null ? -1 : p.owner.id);
             out.writeInt(p.controller == null ? -1 : p.controller.id);
             out.writeInt(p.conqueredDay);
+            out.writeInt(p.buildings.length);
+            for (int lvl : p.buildings) out.writeByte(lvl);
+            out.writeInt(p.building == null ? -1 : p.building.ordinal());
+            out.writeInt(p.buildDone);
+            out.writeDouble(p.unrest);
         }
 
         out.writeInt(g.wars.size());
@@ -180,6 +186,17 @@ public final class SaveFile {
             p.owner = owner < 0 ? null : g.world.countries.get(owner);
             p.controller = controller < 0 ? null : g.world.countries.get(controller);
             if (version >= 2) p.conqueredDay = in.readInt();
+            if (version >= 8) {
+                int kinds = in.readInt();
+                for (int k = 0; k < kinds; k++) {
+                    int lvl = in.readByte();
+                    if (k < p.buildings.length) p.buildings[k] = lvl;
+                }
+                int job = in.readInt();
+                p.building = job < 0 ? null : Building.values()[job];
+                p.buildDone = in.readInt();
+                p.unrest = in.readDouble();
+            }
         }
 
         g.wars.clear();

@@ -36,6 +36,7 @@ public final class SelfTest {
         run("front planner", SelfTest::frontPlanner);
         run("army types and experience", SelfTest::armyTypes);
         run("fog of war", SelfTest::fogOfWar);
+        run("buildings and unrest", SelfTest::buildingsAndUnrest);
         run("save and load", SelfTest::saveLoad);
         System.out.printf("%d checks, %d failed%n", checks, failures);
         System.exit(failures == 0 ? 0 : 1);
@@ -238,6 +239,36 @@ public final class SelfTest {
         boolean moving = false;
         for (Army x : grp.armies) moving |= !x.path.isEmpty() || grp.slots.containsKey(x);
         check(moving, "the group's armies get orders");
+    }
+
+    private static void buildingsAndUnrest() {
+        Game g = newGame();
+        Province[] b = border(g);
+        Country a = b[0].owner, o = b[1].owner;
+        g.player = a;
+        a.gold = 1000;
+        Province home = b[0];
+        double before = home.income(g.day);
+        check(g.build(a, home, mapgame.model.Building.MARKET), "a province can be developed");
+        check(a.gold == 1000 - mapgame.model.Building.MARKET.cost(0), "construction costs gold");
+        check(!g.build(a, home, mapgame.model.Building.FORT), "only one construction at a time");
+        for (int i = 0; i < mapgame.model.Building.BUILD_DAYS; i++) g.tickDay();
+        check(home.level(mapgame.model.Building.MARKET) == 1 && home.building == null, "the building is finished after its build time");
+        check(home.income(g.day) > before, "a market raises the income");
+
+        // Occupied land without a garrison rebels; a garrison keeps it quiet.
+        Province held = b[1];
+        held.controller = a;
+        for (int i = 0; i < 270; i++) g.tickDay();
+        check(held.controller == o, "rebels free an occupied province without a garrison");
+
+        Province held2 = null;
+        for (Province p : o.provinces) if (p != held && p.controller == o) held2 = p;
+        if (held2 == null) return;
+        held2.controller = a;
+        g.armies.add(new Army(900_100, a, held2, 1000));
+        for (int i = 0; i < 270; i++) g.tickDay();
+        check(held2.controller == a, "a garrison keeps an occupied province");
     }
 
     private static void fogOfWar() {
