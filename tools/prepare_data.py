@@ -3,9 +3,10 @@
 Usage: python tools/prepare_data.py [cache_dir]
 
 Output format (tab separated, coordinates are lon lat pairs rounded to 2 decimals):
-  C <name> <population>      start of a country, followed by R lines
+  C <name> <population> <adm0 code>  start of a country, followed by R lines
   T <M|D|U>                  terrain region (mountains, desert, tundra), followed by R lines
   R x y x y ...              one polygon ring (holes are plain rings; fill rule is even-odd)
+  P <name> <lon> <lat> <population> <capital 0|1> <adm0 code> <adm0 name>   city or capital
 """
 import json
 import math
@@ -14,9 +15,10 @@ import sys
 import urllib.request
 
 BASE = "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/"
-FILES = ["ne_50m_admin_0_countries.geojson", "ne_50m_geography_regions_polys.geojson"]
+FILES = ["ne_50m_admin_0_countries.geojson", "ne_50m_geography_regions_polys.geojson", "ne_50m_populated_places_simple.geojson"]
 EPS = 0.03
 MIN_RING_EXTENT = 0.12
+MIN_CITY_POP = 1_000_000
 
 
 def fetch(cache):
@@ -85,7 +87,7 @@ def main():
         p = f["properties"]
         if p["NAME"] == "Antarctica":
             continue
-        lines.append("C\t%s\t%d" % (p["NAME"], max(0, int(p.get("POP_EST") or 0))))
+        lines.append("C\t%s\t%d\t%s" % (p["NAME"], max(0, int(p.get("POP_EST") or 0)), p.get("ADM0_A3") or ""))
         emit_rings(f["geometry"], lines)
     kinds = {"Range/mtn": "M", "Desert": "D", "Tundra": "U"}
     for f in data[FILES[1]]["features"]:
@@ -94,6 +96,14 @@ def main():
             continue
         lines.append("T\t" + kind)
         emit_rings(f["geometry"], lines)
+    for f in data[FILES[2]]["features"]:
+        p = f["properties"]
+        pop = int(p.get("pop_max") or 0)
+        capital = 1 if p.get("adm0cap") == 1 else 0
+        if not capital and pop < MIN_CITY_POP:
+            continue
+        lines.append("P\t%s\t%.3f\t%.3f\t%d\t%d\t%s\t%s" % (p["name"], p["longitude"], p["latitude"], pop, capital,
+                                                           p.get("adm0_a3") or "", p.get("adm0name") or ""))
     out = os.path.join("res", "mapgame", "data", "world.txt")
     os.makedirs(os.path.dirname(out), exist_ok=True)
     with open(out, "w", encoding="utf-8", newline="\n") as fh:

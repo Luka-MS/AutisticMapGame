@@ -566,7 +566,9 @@ public final class GameWindow extends JFrame {
         StringBuilder sb = new StringBuilder();
         sb.append(I18n.tr("info.name", p.name, p.terrain.label())).append('\n');
         if (!p.isLand()) return sb.append(I18n.tr("info.sea")).toString();
-        sb.append(I18n.tr("info.population", p.population, p.income())).append('\n');
+        sb.append(I18n.tr("info.population", p.population, p.income(game.day))).append('\n');
+        if (p.city != null) sb.append(I18n.tr("info.city", p.city, p.cityPopulation)).append('\n');
+        if (p.isCapital()) sb.append(I18n.tr("info.capital", p.owner.displayName())).append('\n');
         sb.append(I18n.tr("info.owner", p.owner == null ? I18n.tr("info.unclaimed") : p.owner.displayName())).append('\n');
         if (p.owner != null && p.controller != p.owner) sb.append(I18n.tr("info.occupied", p.controller.displayName())).append('\n');
         if (!p.ferryTo.isEmpty()) sb.append(I18n.tr("info.ferry", Province.FERRY_DAYS)).append('\n');

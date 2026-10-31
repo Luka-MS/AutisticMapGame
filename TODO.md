@@ -14,7 +14,7 @@ Ideas and planned work for Map Game. Tick items off (`[x]`) as they are done.
 - [x] **Save / load:** quick save/load (F5/F9), file dialog, yearly autosave, "Load game" in the main menu. Saves store only the changing state; the map is recreated from map type + seed.
 - [x] **AI balance on real maps:** peace deals take at most 35% of the loser's land, nobody loses their last province in a normal war, capitulation instead of instant elimination, affordable start armies. Europe: 41% of nations were wiped out within 5 years before, now none. Follow-ups below.
 - [x] **AI balance follow-ups:** the AI occasionally declares total war on much weaker neighbours, neighbours form a coalition against any nation holding over 20% of the land, AI war goals (settles for a limited share of the enemy land), conquered provinces yield only half for a year, and AI nations in debt demobilize troops. Europe, 20 years: biggest nation 34% -> 17%, nations in debt 8 -> 1.
-- [ ] **Real capitals and cities:** capitals are currently just the central province. Natural Earth populated places could provide real capitals and big cities with higher income.
+- [x] **Real capitals and cities:** Natural Earth populated places give every country its real capital (where it lies on the map) and about 300 big cities. City provinces are named after the city and yield +30% (+60% for megacities), capitals +50%. Cities and capitals are drawn on the map; a nation that loses its capital in a peace deal moves it.
 - [ ] **UI gaps:** minimap, better province tooltips, an event/notification list, a "go to capital" key.
 
 ## Core strategy depth

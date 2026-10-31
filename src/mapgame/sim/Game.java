@@ -165,6 +165,8 @@ public final class Game {
         int moved = transferOnPeace(a, b, ownedB) + transferOnPeace(b, a, ownedA);
         wars.remove(key(a, b));
         peaceDeals++;
+        relocateCapital(a);
+        relocateCapital(b);
         a.truceUntil = Math.max(a.truceUntil, day + TRUCE_DAYS);
         b.truceUntil = Math.max(b.truceUntil, day + TRUCE_DAYS);
         log(I18n.tr("peace.made", a.displayName(), b.displayName()) + (moved == 0 ? "" : " " + I18n.tr("peace.moved", moved)));
@@ -172,6 +174,19 @@ public final class Game {
         checkElimination(a);
         checkElimination(b);
         mapDirty = true;
+    }
+
+    /** A nation that lost its capital in a peace deal moves the capital to its most populous province. */
+    private void relocateCapital(Country c) {
+        if (!c.alive || c.capital == null || c.capital.owner == c) return;
+        Province best = null;
+        for (Province p : c.provinces) {
+            if (best == null || p.population * p.wealth() > best.population * best.wealth()) best = p;
+        }
+        if (best != null) {
+            c.capital = best;
+            log(I18n.tr("capital.moved", c.displayName(), best.name));
+        }
     }
 
     private int transferOnPeace(Country winner, Country loser, int loserOwned) {

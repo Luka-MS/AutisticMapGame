@@ -12,7 +12,11 @@ import java.util.List;
 /** Real-world geometry (Natural Earth) loaded from the bundled world.txt resource. */
 final class GeoData {
     /** Rings are flat arrays of lon, lat pairs. */
-    record GeoCountry(String name, long population, List<double[]> rings) {
+    record GeoCountry(String name, long population, String code, List<double[]> rings) {
+    }
+
+    /** A city or capital with its real position. */
+    record GeoCity(String name, double lon, double lat, long population, boolean capital, String code, String countryName) {
     }
 
     /** kind: M = mountains, D = desert, U = tundra. */
@@ -21,6 +25,7 @@ final class GeoData {
 
     final List<GeoCountry> countries = new ArrayList<>();
     final List<GeoRegion> regions = new ArrayList<>();
+    final List<GeoCity> cities = new ArrayList<>();
 
     private static GeoData cached;
 
@@ -42,8 +47,10 @@ final class GeoData {
                 switch (f[0]) {
                     case "C" -> {
                         rings = new ArrayList<>();
-                        data.countries.add(new GeoCountry(f[1], Long.parseLong(f[2]), rings));
+                        data.countries.add(new GeoCountry(f[1], Long.parseLong(f[2]), f.length > 3 ? f[3] : "", rings));
                     }
+                    case "P" -> data.cities.add(new GeoCity(f[1], Double.parseDouble(f[2]), Double.parseDouble(f[3]),
+                            Long.parseLong(f[4]), f[5].equals("1"), f.length > 6 ? f[6] : "", f.length > 7 ? f[7] : ""));
                     case "T" -> {
                         rings = new ArrayList<>();
                         data.regions.add(new GeoRegion(f[1].charAt(0), rings));

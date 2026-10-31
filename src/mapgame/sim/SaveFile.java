@@ -28,8 +28,8 @@ import mapgame.model.Province;
 public final class SaveFile {
     public static final String EXTENSION = ".sav";
     private static final int MAGIC = 0x4D47534D;
-    /** 2: provinces remember when they were conquered. Older versions can still be read. */
-    private static final int VERSION = 2;
+    /** 2: provinces remember when they were conquered. 3: capitals are saved. Older versions can still be read. */
+    private static final int VERSION = 3;
 
     private SaveFile() {
     }
@@ -78,6 +78,7 @@ public final class SaveFile {
             out.writeDouble(c.gold);
             out.writeInt(c.manpower);
             out.writeInt(c.truceUntil);
+            out.writeInt(c.capital == null ? -1 : c.capital.id);
             out.writeInt(c.provinces.size());
             for (Province p : c.provinces) out.writeInt(p.id);
         }
@@ -157,6 +158,10 @@ public final class SaveFile {
             c.gold = in.readDouble();
             c.manpower = in.readInt();
             c.truceUntil = in.readInt();
+            if (version >= 3) {
+                int capital = in.readInt();
+                if (capital >= 0) c.capital = g.world.provinces.get(capital);
+            }
             c.provinces.clear();
             int n = in.readInt();
             for (int i = 0; i < n; i++) c.provinces.add(g.world.provinces.get(in.readInt()));

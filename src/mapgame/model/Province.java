@@ -49,19 +49,35 @@ public final class Province {
         return 0.5 + 0.5 * Math.min(1.0, Math.max(0, day - conqueredDay) / (double) INTEGRATION_DAYS);
     }
 
-    /** Full gold per month, ignoring integration. */
-    public double income() {
-        return population / 10000.0;
-    }
-
     /** Gold per month on the given day. */
     public double income(int day) {
         return income() * integration(day);
     }
 
+    /** Real city located in this province (real maps only), or null. */
+    public String city;
+    public long cityPopulation;
+
+    public boolean isCapital() {
+        return owner != null && owner.capital == this;
+    }
+
+    /** Yield multiplier: cities and especially capitals are worth more than farmland. */
+    public double wealth() {
+        double w = 1;
+        if (city != null) w += cityPopulation >= 5_000_000 ? 0.6 : 0.3;
+        if (isCapital()) w += 0.5;
+        return w;
+    }
+
+    /** Full gold per month, ignoring integration. */
+    public double income() {
+        return population / 10000.0 * wealth();
+    }
+
     /** Manpower per month. */
     public int manpowerGain() {
-        return (int) (population * 0.0006);
+        return (int) (population * 0.0006 * wealth());
     }
 
     /** Manpower per month on the given day. */

@@ -71,6 +71,7 @@ public final class RealMapGenerator {
 
         assignTerrain(world, geo, pr, ids, cls, seed);
         createCountries(world, geo, provCls, rnd);
+        placeCities(world, geo, pr);
         linkStraits(world, cls, comp, ids, spec.strait);
         for (Province p : provinces) {
             for (Province q : p.neighbors) if (p.isLand() && !q.isLand()) p.coastal = true;
@@ -424,6 +425,55 @@ public final class RealMapGenerator {
             for (Province p : provs) world.setOwner(p, c);
             c.capital = pickCapital(provs);
         }
+    }
+
+    /**
+     * Puts the real cities on the map (the province under a city is named after it and yields more) and moves each
+     * country's capital to its real capital where that lies on the map.
+     */
+    private static void placeCities(World world, GeoData geo, Projection pr) {
+        Map<String, GeoData.GeoCountry> byName = new HashMap<>();
+        for (GeoData.GeoCountry gc : geo.countries) byName.put(gc.name(), gc);
+        Map<Country, Province> capitals = new HashMap<>();
+        Map<Country, Long> capitalPop = new HashMap<>();
+
+        for (GeoData.GeoCity city : geo.cities) {
+            Province p = landProvinceAt(world, pr.x(city.lon()), pr.y(city.lat()));
+            if (p == null || p.owner == null) continue;
+            if (p.city == null || city.population() > p.cityPopulation) {
+                p.city = city.name();
+                p.cityPopulation = city.population();
+            }
+            if (!city.capital()) continue;
+            Country owner = p.owner;
+            GeoData.GeoCountry gc = byName.get(owner.name);
+            boolean mine = gc != null && ((!city.code().isEmpty() && city.code().equals(gc.code())) || city.countryName().equals(gc.name()));
+            if (mine && city.population() >= capitalPop.getOrDefault(owner, -1L)) {
+                capitals.put(owner, p);
+                capitalPop.put(owner, city.population());
+            }
+        }
+        for (Map.Entry<Country, Province> e : capitals.entrySet()) e.getKey().capital = e.getValue();
+        for (Province p : world.provinces) {
+            if (p.city != null) p.name = p.city;
+        }
+    }
+
+    /** The land province at a world position, or the closest land neighbour when the point lies just off the coast. */
+    private static Province landProvinceAt(World world, double x, double y) {
+        Province p = world.provinceAt(x, y);
+        if (p == null || p.isLand()) return p;
+        Province best = null;
+        double bd = Double.MAX_VALUE;
+        for (Province q : p.neighbors) {
+            if (!q.isLand()) continue;
+            double d = (q.x - x) * (q.x - x) + (q.y - y) * (q.y - y);
+            if (d < bd) {
+                bd = d;
+                best = q;
+            }
+        }
+        return best;
     }
 
     /** The province closest to the centre of the country's biggest landmass. */

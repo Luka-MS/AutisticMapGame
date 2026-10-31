@@ -16,6 +16,7 @@ Pick a nation, raise armies, declare wars and conquer the map - on a randomly ge
 - **Balanced peace deals:** in a normal war the winner takes at most 35% of the loser's provinces and nobody loses their last province; a nation without any land left capitulates. Only a total war can wipe a nation out. This keeps the AI world dynamic without snowballing or mass extinction.
 - **Save / load** with quick save (F5), quick load (F9), a file dialog, a yearly autosave and a *Load game* button in the main menu.
 - **Languages:** English, German, Serbo-Croatian in Croatian wording (Latin and Cyrillic script) and Russian, switchable in the main menu at any time. The choice is remembered. Texts live in `res/mapgame/lang/*.properties`; the Cyrillic Serbo-Croatian texts are generated from `sh.properties` (text in `{braces}` stays Latin). Names of the real countries (Europe and World maps) are translated via `res/mapgame/lang/countries.tsv`; invented nations and province names stay as generated.
+- **Real capitals and cities:** every real nation starts with its real capital and the big cities of the Natural Earth data are on the map. City provinces yield more gold and manpower (+30%, megacities +60%), capitals +50%. A nation that loses its capital in a peace deal moves it to its richest province.
 - **AI nations** that recruit, attack, make peace and declare wars. They fight for limited war goals, occasionally launch a total war on a far weaker neighbour, band together in a coalition against a nation that holds more than 20% of the land, and demobilize when in debt. Conquered provinces yield only half for a year.
 - **Sea crossings:** islands are linked to the mainland over narrow straits (e.g. UK-France, Japan-Korea) as long as there is no navy.
 
@@ -157,7 +158,7 @@ python tools\prepare_data.py
 
 ## Roadmap
 
-Navy and sea transport, alliances, fog of war, technology, buildings, provinces with unrest, real capitals and cities, automatic reinforcement for army groups, sound.
+Navy and sea transport, alliances, fog of war, technology, buildings, provinces with unrest, automatic reinforcement for army groups, sound.
 
 ## Credits and license
 

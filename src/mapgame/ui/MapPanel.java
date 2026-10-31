@@ -338,6 +338,7 @@ public final class MapPanel extends JPanel {
         if (hovered != null && hovered != selected) hoverHl.draw(g, game, hovered, zoom, offX, offY);
         if (selected != null) selectionHl.draw(g, game, selected, zoom, offX, offY);
         if (mode == Mode.POLITICAL) drawCountryLabels(g);
+        drawCities(g);
         drawGroupFront(g);
         drawArmyPath(g);
         drawArmies(g);
@@ -350,6 +351,33 @@ public final class MapPanel extends JPanel {
             g.drawRect(x, y, w, h);
         }
         g.dispose();
+    }
+
+    /** Capitals (square) and other big cities (dot); names appear when zoomed in. */
+    private void drawCities(Graphics2D g) {
+        if (zoom < 0.9) return;
+        boolean names = zoom >= 1.8;
+        g.setFont(getFont().deriveFont(Font.PLAIN, 11f));
+        FontMetrics fm = g.getFontMetrics();
+        for (Province p : game.world.provinces) {
+            boolean cap = p.isCapital();
+            if (p.city == null && !cap) continue;
+            int x = (int) (p.x * zoom + offX), y = (int) (p.y * zoom + offY);
+            if (x < -60 || y < -20 || x > getWidth() + 60 || y > getHeight() + 20) continue;
+            int s = cap ? 7 : 5;
+            g.setColor(Color.BLACK);
+            g.fillRect(x - s / 2 - 1, y - s / 2 - 1, s + 2, s + 2);
+            g.setColor(cap ? new Color(255, 215, 60) : Color.WHITE);
+            if (cap) g.fillRect(x - s / 2, y - s / 2, s, s);
+            else g.fillOval(x - s / 2, y - s / 2, s, s);
+            if (names || cap && zoom >= 1.3) {
+                String label = p.city != null ? p.city : p.name;
+                g.setColor(new Color(0, 0, 0, 170));
+                g.drawString(label, x + s + 1, y + fm.getAscent() / 2 + 1);
+                g.setColor(Color.WHITE);
+                g.drawString(label, x + s, y + fm.getAscent() / 2);
+            }
+        }
     }
 
     private void drawCountryLabels(Graphics2D g) {
