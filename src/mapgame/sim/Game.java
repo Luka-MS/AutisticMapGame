@@ -608,6 +608,32 @@ public final class Game {
         return null;
     }
 
+    // ---------------------------------------------------------------- fog of war
+
+    /** When set, the player only sees foreign armies near his own land and armies (see {@link #visibleTo}). */
+    public boolean fogOfWar;
+
+    /**
+     * Provinces a nation can currently see: its own and allied land, its own and allied armies, and everything
+     * one province further (two for cavalry).
+     */
+    public boolean[] visibleTo(Country c) {
+        boolean[] vis = new boolean[world.provinces.size()];
+        for (Province p : world.provinces) {
+            if (friendly(c, p.controller) && p.controller != null || friendly(c, p.owner) && p.owner != null) reveal(p, 1, vis);
+        }
+        for (Army a : armies) {
+            if (!a.dead && friendly(c, a.owner)) reveal(a.location, a.type == ArmyType.CAVALRY ? 2 : 1, vis);
+        }
+        return vis;
+    }
+
+    private static void reveal(Province p, int radius, boolean[] vis) {
+        vis[p.id] = true;
+        if (radius == 0) return;
+        for (Province q : p.neighbors) reveal(q, radius - 1, vis);
+    }
+
     // ---------------------------------------------------------------- supply and attrition
 
     /** Farthest distance (in provinces) from own land that still counts in the supply calculation. */

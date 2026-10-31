@@ -65,7 +65,7 @@ public final class GameWindow extends JFrame {
     private final JTextArea status = textArea(5), info = textArea(8), logArea = new JTextArea();
     private final JButton startBtn = button(), recruitBtn = button(), splitBtn = button(), mergeBtn = button(),
             groupsBtn = button(), warBtn = button(), totalWarBtn = button(), peaceBtn = button(), allianceBtn = button(),
-            menuBtn = button(), saveBtn = button(), loadBtn = button(), modeBtn = button();
+            menuBtn = button(), saveBtn = button(), loadBtn = button(), modeBtn = button(), fogBtn = button();
     private final List<JToggleButton> speedBtns = new ArrayList<>();
     private JSplitPane sideSplit;
     private final ArmyGroupDialog groupDialog;
@@ -136,6 +136,7 @@ public final class GameWindow extends JFrame {
         saveBtn.addActionListener(e -> saveWithChooser());
         loadBtn.addActionListener(e -> loadWithChooser());
         modeBtn.addActionListener(e -> toggleMode());
+        fogBtn.addActionListener(e -> toggleFog());
         groupsBtn.addActionListener(e -> showGroups());
         recruitBtn.addActionListener(e -> {
             Province p = map.selectedProvince();
@@ -396,6 +397,8 @@ public final class GameWindow extends JFrame {
         head.add(left(speeds));
         head.add(Box.createVerticalStrut(6));
         head.add(left(modeBtn));
+        head.add(Box.createVerticalStrut(4));
+        head.add(left(fogBtn));
         head.add(Box.createVerticalStrut(6));
         head.add(scroll(status, 100));
 
@@ -464,6 +467,7 @@ public final class GameWindow extends JFrame {
             bind(Integer.toString(i), () -> setSpeed(s));
         }
         bind("M", this::toggleMode);
+        bind("F", this::toggleFog);
         bind("X", this::splitSelected);
         bind("C", this::mergeSelected);
         bind("G", this::showGroups);
@@ -558,6 +562,12 @@ public final class GameWindow extends JFrame {
         modeBtn.setText(I18n.tr("btn.mode", map.mode().label()));
     }
 
+    private void toggleFog() {
+        if (game == null || !started) return;
+        game.fogOfWar = !game.fogOfWar;
+        refresh();
+    }
+
     private void toggleMode() {
         map.toggleMode();
         updateModeText();
@@ -611,6 +621,8 @@ public final class GameWindow extends JFrame {
         Country me = game.player;
         Province sel = map.selectedProvince();
         dateLabel.setText(game.date());
+        fogBtn.setText(I18n.tr("btn.fog", I18n.tr(game.fogOfWar ? "fog.on" : "fog.off")));
+        fogBtn.setEnabled(started);
 
         if (started && me != null) {
             double net = game.monthlyIncome(me) - game.monthlyUpkeep(me);

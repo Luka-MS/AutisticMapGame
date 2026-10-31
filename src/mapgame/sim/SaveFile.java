@@ -29,8 +29,8 @@ import mapgame.model.Province;
 public final class SaveFile {
     public static final String EXTENSION = ".sav";
     private static final int MAGIC = 0x4D47534D;
-    /** 2: conquest day. 3: capitals. 4: group reinforcement. 5: alliances. 6: army types. Older versions can still be read. */
-    private static final int VERSION = 6;
+    /** 2: conquest day. 3: capitals. 4: group reinforcement. 5: alliances. 6: army types. 7: fog of war. Older versions load too. */
+    private static final int VERSION = 7;
 
     private SaveFile() {
     }
@@ -73,6 +73,7 @@ public final class SaveFile {
         out.writeLong(rngSeed);
         out.writeInt(g.nextArmyId);
         out.writeInt(g.nextGroupId);
+        out.writeBoolean(g.fogOfWar);
 
         for (Country c : g.world.countries) {
             out.writeBoolean(c.alive);
@@ -159,6 +160,7 @@ public final class SaveFile {
         g.rnd.setSeed(in.readLong());
         g.nextArmyId = in.readInt();
         g.nextGroupId = in.readInt();
+        if (version >= 7) g.fogOfWar = in.readBoolean();
 
         for (Country c : g.world.countries) {
             c.alive = in.readBoolean();

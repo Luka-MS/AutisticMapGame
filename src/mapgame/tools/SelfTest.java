@@ -35,6 +35,7 @@ public final class SelfTest {
         run("group reinforcement", SelfTest::reinforcement);
         run("front planner", SelfTest::frontPlanner);
         run("army types and experience", SelfTest::armyTypes);
+        run("fog of war", SelfTest::fogOfWar);
         run("save and load", SelfTest::saveLoad);
         System.out.printf("%d checks, %d failed%n", checks, failures);
         System.exit(failures == 0 ? 0 : 1);
@@ -237,6 +238,25 @@ public final class SelfTest {
         boolean moving = false;
         for (Army x : grp.armies) moving |= !x.path.isEmpty() || grp.slots.containsKey(x);
         check(moving, "the group's armies get orders");
+    }
+
+    private static void fogOfWar() {
+        Game g = newGame();
+        Province[] b = border(g);
+        Country a = b[0].owner;
+        boolean[] vis = g.visibleTo(a);
+        boolean ownVisible = true;
+        for (Province p : a.provinces) ownVisible &= vis[p.id];
+        check(ownVisible, "all own provinces are visible");
+        check(vis[b[1].id], "provinces next to own land are visible");
+        int hidden = 0;
+        Province far = null;
+        for (boolean v : vis) if (!v) hidden++;
+        for (Province p : g.world.provinces) if (!vis[p.id] && p.isLand()) far = p;
+        check(hidden > 0 && far != null, "distant provinces stay hidden");
+        if (far == null) return;
+        g.armies.add(new Army(900_001, a, far, 1000));
+        check(g.visibleTo(a)[far.id], "an own army reveals its province");
     }
 
     private static void armyTypes() {

@@ -70,6 +70,11 @@ public final class MapPanel extends JPanel {
 
     private static final int MINI_W = 240, MINI_H = 135, MINI_MARGIN = 10;
     private BufferedImage miniPolitical, miniTerrain;
+    /** Fog of war: provinces the player can see (null = everything) and a 1/4 scale shadow image. */
+    private boolean[] visible;
+    private BufferedImage fog;
+    private int fogHash;
+    private static final int FOG_SCALE = 4;
 
     public MapPanel() {
         setBackground(SEA);
@@ -157,6 +162,8 @@ public final class MapPanel extends JPanel {
 
     public void setGame(Game g) {
         game = g;
+        visible = null;
+        fog = null;
         selected = hovered = null;
         setArmySelection(null);
         political = MapRenderer.newImage();
@@ -250,7 +257,31 @@ public final class MapPanel extends JPanel {
             selectedArmy = armySel.isEmpty() ? null : armySel.iterator().next();
             selectionListener.run();
         }
+        updateFog();
         repaint();
+    }
+
+    private void updateFog() {
+        if (!game.fogOfWar || game.player == null) {
+            visible = null;
+            fog = null;
+            return;
+        }
+        visible = game.visibleTo(game.player);
+        int h = java.util.Arrays.hashCode(visible);
+        if (fog != null && h == fogHash) return;
+        fogHash = h;
+        fog = new BufferedImage(W / FOG_SCALE, H / FOG_SCALE, BufferedImage.TYPE_INT_ARGB);
+        for (int y = 0; y < fog.getHeight(); y++) {
+            for (int x = 0; x < fog.getWidth(); x++) {
+                if (!visible[game.world.ids[y * FOG_SCALE * W + x * FOG_SCALE]]) fog.setRGB(x, y, 0x99000000);
+            }
+        }
+    }
+
+    /** False for foreign armies the fog of war hides. */
+    private boolean seen(Army a) {
+        return visible == null || visible[a.location.id] || game.friendly(game.player, a.owner);
     }
 
     // ---------------------------------------------------------------- view helpers
@@ -354,6 +385,10 @@ public final class MapPanel extends JPanel {
         g.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
                 zoom < 1 ? RenderingHints.VALUE_INTERPOLATION_BILINEAR : RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
         g.drawImage(mode == Mode.POLITICAL ? political : terrain, new AffineTransform(zoom, 0, 0, zoom, offX, offY), null);
+        if (fog != null) {
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            g.drawImage(fog, new AffineTransform(zoom * FOG_SCALE, 0, 0, zoom * FOG_SCALE, offX, offY), null);
+        }
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
         drawFerries(g);
@@ -461,7 +496,7 @@ public final class MapPanel extends JPanel {
             if (p.city != null) sb.append("<br>").append(html(I18n.tr("info.city", p.city, p.cityPopulation)));
             if (p.isCapital()) sb.append("<br><b>").append(html(I18n.tr("info.capital", p.owner.displayName()))).append("</b>");
             Map<Country, Integer> here = new LinkedHashMap<>();
-            for (Army a : game.armies) if (!a.dead && a.location == p) here.merge(a.owner, a.strength, Integer::sum);
+            for (Army a : game.armies) if (!a.dead && a.location == p && seen(a)) here.merge(a.owner, a.strength, Integer::sum);
             if (!here.isEmpty()) {
                 StringBuilder list = new StringBuilder();
                 for (Map.Entry<Country, Integer> en : here.entrySet()) {
@@ -581,7 +616,7 @@ public final class MapPanel extends JPanel {
         FontMetrics fm = g.getFontMetrics();
         Map<Integer, Integer> stacks = new HashMap<>();
         for (Army a : game.armies) {
-            if (a.dead) continue;
+            if (a.dead || !seen(a)) continue;
             double[] pos = armyPos(a);
             int sx = (int) (pos[0] * zoom + offX) - w / 2, sy = (int) (pos[1] * zoom + offY) - h / 2;
             if (a.progress == 0) sy -= (h + 2) * stacks.merge(a.location.id, 1, Integer::sum) - (h + 2);

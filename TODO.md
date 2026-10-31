@@ -26,7 +26,7 @@ Ideas and planned work for Map Game. Tick items off (`[x]`) as they are done.
 - [x] **Army quality (unit types and experience):** every army is infantry, cavalry (fast, strong on open ground, fragile, 1.5x gold) or artillery (slow, +50% attack, vulnerable unless infantry stands with it, 2x gold). Armies gain experience in battle (up to +40% attack and -25% damage taken); new men dilute it and merges average it. AI nations mix unit types.
 - [ ] **Generals and morale:** commanders with traits and a morale value that decides when armies break.
 - [x] **Reinforcement for army groups:** tick *Reinforce automatically* in the group window and set a target strength; the group refills armies standing in own territory (500 men per round) and raises new armies at home when needed, paying gold and manpower like a normal recruit (50 gold are always kept in reserve).
-- [ ] **Fog of war:** only see armies near your territory; adds scouting.
+- [x] **Fog of war:** optional (button / **F** in the game, saved with the game). You see foreign armies only on your own and allied land, next to it, and next to your own armies (two provinces for cavalry); everything else is shaded. Own armies are scouts. The AI is not affected.
 
 ## Economy and nation management
 

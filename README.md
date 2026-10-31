@@ -67,6 +67,7 @@ Pushing a tag like `v1.0.0` triggers [`.github/workflows/release.yml`](.github/w
 | Space | Pause / resume |
 | 1-5 | Game speed |
 | M | Toggle political / terrain map |
+| F | Toggle fog of war (foreign armies are only visible near your land and your armies) |
 | X | Split the selected army in half (the new army gets selected) |
 | C | Merge idle friendly armies in the same province into the selected one |
 | G | Open the army group window |
