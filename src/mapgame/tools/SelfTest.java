@@ -547,6 +547,14 @@ public final class SelfTest {
         check(army.location == sea && army.fleet == f, "the army travels with the fleet");
         check(g.orderMove(army, port) == false, "an embarked army takes no land orders");
         check(mapgame.sim.Navy.disembark(g, f, port) == 1 && army.fleet == null && army.location == port, "the army lands in the port");
+        Province adjacentLand = null;
+        for (Province p : port.neighbors) if (p.isLand() && p != port && g.allowed(a, p)) adjacentLand = p;
+        if (adjacentLand != null) {
+            check(mapgame.sim.Navy.embark(g, army, f), "an army can re-embark in port");
+            check(mapgame.sim.Navy.disembark(g, f, adjacentLand) == 0 && army.fleet == f,
+                    "a fleet in port cannot unload into another land province");
+            check(mapgame.sim.Navy.disembark(g, f, port) == 1, "a fleet in port can unload at its own port");
+        }
 
         // Fleet battle and sinking with cargo.
         Country b = null;
@@ -585,15 +593,35 @@ public final class SelfTest {
         mapgame.sim.MapEditor ed = new mapgame.sim.MapEditor(MapKind.RANDOM, 42);
         Country atlantis = ed.newCountry("Atlantis", 0x8844AA);
         check(atlantis != null && ed.newCountry("Atlantis", 1) == null, "new nations need a unique name");
+        Country waiting = ed.newCountry("Borealis", 0x4488AA);
+        check(waiting != null, "a second new nation can be created");
         check(ed.newCountry("Bad,Name", 1) == null && ed.newCountry("A=B", 1) == null, "names may not contain scenario syntax");
         Province land = null;
         for (Province p : ed.game.world.provinces) if (p.isLand() && p.owner != null && p.owner.provinces.size() > 3) land = p;
         check(land != null && ed.assign(land, atlantis), "a province can be given to a nation");
         check(land.owner == atlantis && atlantis.capital == land, "the new nation gets a capital");
+        check(waiting.alive && ed.nations().contains(waiting), "an empty new nation remains available for land assignment");
         Country other = null;
-        for (Country c : ed.nations()) if (c != atlantis) other = c;
+        for (Country c : ed.nations()) if (c != atlantis && c != waiting) other = c;
         String oldName = other.name;
         check(ed.rename(other, "Renamed Land"), "nations can be renamed");
+        Country swapA = null, swapB = null;
+        for (Country c : ed.nations()) {
+            if (c == atlantis || c == waiting || c == other) continue;
+            if (swapA == null) swapA = c;
+            else if (swapB == null) swapB = c;
+        }
+        String swapAName = swapA.name, swapBName = swapB.name;
+        check(ed.rename(swapA, "Temporary Swap Name") && ed.rename(swapB, swapAName) && ed.rename(swapA, swapBName),
+                "nations can exchange names through an intermediate name");
+        Province swappedLand = null;
+        for (Province p : ed.game.world.provinces) {
+            if (p.isLand() && p.owner != null && p.owner != atlantis && p.owner != swapA && p.owner.provinces.size() > 2) {
+                swappedLand = p;
+                break;
+            }
+        }
+        check(swappedLand != null && ed.assign(swappedLand, swapA), "a province can be assigned to a renamed nation");
         ed.setName(land, "Port Atlantis");
         ed.setPopulation(land, 123_456);
 
@@ -606,6 +634,10 @@ public final class SelfTest {
         Game g = Game.create(MapKind.RANDOM, sc.seed, sc);
         Province again = g.world.provinces.get(land.id);
         check(again.owner != null && again.owner.name.equals("Atlantis"), "the scenario recreates the new owner");
+        check(g.world.countries.get(swapA.id).name.equals(swapBName) && g.world.countries.get(swapB.id).name.equals(swapAName),
+                "the exported scenario preserves swapped country names");
+        check(g.world.provinces.get(swappedLand.id).owner == g.world.countries.get(swapA.id),
+                "ownership directives still target the correct renamed nation");
         check(again.name.equals("Port Atlantis") && again.population == 123_456, "the scenario recreates names and population");
         check(g.world.countries.stream().anyMatch(c -> c.alive && c.name.equals("Renamed Land")), "the scenario recreates renamed nations");
         for (int i = 0; i < 100; i++) g.tickDay();

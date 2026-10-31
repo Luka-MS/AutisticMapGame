@@ -36,7 +36,7 @@ import mapgame.model.World;
  * owner 123 Atlantis                                      (province 123 now belongs to Atlantis)
  * provname 123 Port Atlantis                              (rename a province)
  * population 123 250000                                   (set a province's population)
- * seed 4711                                               (random map only: the world seed the province ids refer to)
+ * seed 4711                                               (the world seed the province ids refer to)
  * alliance France, Russian Empire
  * war Serbia, Austria-Hungary
  * </pre>

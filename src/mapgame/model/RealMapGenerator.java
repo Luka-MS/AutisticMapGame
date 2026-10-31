@@ -703,6 +703,7 @@ public final class RealMapGenerator {
         Map<Long, Integer> perIslandPair = new HashMap<>();
         for (Map.Entry<Long, Integer> e : pairs) {
             Province pa = world.provinces.get((int) (e.getKey() / n)), pb = world.provinces.get((int) (e.getKey() % n));
+            if (pa.neighbors.contains(pb)) continue;
             long islands = (long) Math.min(pa.landmass, pb.landmass) * (comp.length + 1) + Math.max(pa.landmass, pb.landmass);
             if (perIslandPair.merge(islands, 1, Integer::sum) > MAX_CROSSINGS) continue;
             pa.neighbors.add(pb);

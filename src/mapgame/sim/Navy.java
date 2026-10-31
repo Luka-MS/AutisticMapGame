@@ -145,7 +145,7 @@ public final class Navy {
      */
     public static int disembark(Game g, Fleet f, Province land) {
         if (f == null || f.dead || land == null || !land.isLand() || f.cargo.isEmpty()) return 0;
-        if (land != f.location && !f.location.neighbors.contains(land)) return 0;
+        if (land != f.location && (f.location.isLand() || !f.location.neighbors.contains(land))) return 0;
         if (!g.allowed(f.owner, land)) return 0;
         int n = 0;
         for (Army a : new ArrayList<>(f.cargo)) {

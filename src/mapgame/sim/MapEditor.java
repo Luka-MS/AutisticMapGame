@@ -88,6 +88,7 @@ public final class MapEditor {
         for (Country c : game.world.countries) {
             if (!c.alive) continue;
             if (c.provinces.isEmpty()) {
+                if (c.capital == null) continue;
                 c.alive = false;
                 continue;
             }
@@ -114,11 +115,25 @@ public final class MapEditor {
         sb.append("name ").append(displayName).append('\n');
         sb.append("start ").append(startYear).append('\n');
         sb.append("maps ").append(kind.name().toLowerCase()).append('\n');
-        if (kind == MapKind.RANDOM) sb.append("seed ").append(seed).append('\n');
+        sb.append("seed ").append(seed).append('\n');
         // Renames first: new nations may reuse a name that an old nation has given up.
+        Set<String> usedNames = new HashSet<>(originalCountryName);
+        for (Country c : game.world.countries) usedNames.add(c.name);
+        List<String> temporaryNames = new ArrayList<>();
         for (int i = 0; i < originalCountryName.size(); i++) {
             Country c = game.world.countries.get(i);
-            if (!c.name.equals(originalCountryName.get(i))) sb.append("rename ").append(originalCountryName.get(i)).append(" = ").append(c.name).append('\n');
+            if (c.name.equals(originalCountryName.get(i))) {
+                temporaryNames.add(null);
+                continue;
+            }
+            String temporary = "__map_editor_tmp_" + i;
+            while (!usedNames.add(temporary)) temporary += "_";
+            temporaryNames.add(temporary);
+            sb.append("rename ").append(originalCountryName.get(i)).append(" = ").append(temporary).append('\n');
+        }
+        for (int i = 0; i < temporaryNames.size(); i++) {
+            String temporary = temporaryNames.get(i);
+            if (temporary != null) sb.append("rename ").append(temporary).append(" = ").append(game.world.countries.get(i).name).append('\n');
         }
         for (int i = originalCountryName.size(); i < game.world.countries.size(); i++) {
             Country c = game.world.countries.get(i);

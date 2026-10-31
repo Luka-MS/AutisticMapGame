@@ -51,7 +51,7 @@ final class EditorPanel extends JPanel {
             nameLabel = new JLabel(), populationLabel = new JLabel(), idLabel = new JLabel(), yearLabel = new JLabel(), status = new JLabel(" ");
     private final JTextField provinceName = new JTextField(14), scenarioName = new JTextField("My scenario", 12), scenarioId = new JTextField("my_scenario", 12);
     private final JSpinner population = new JSpinner(new SpinnerNumberModel(0, 0, 1_000_000_000, 10_000));
-    private final JSpinner year = new JSpinner(new SpinnerNumberModel(1900, 1000, 2500, 1));
+    private final JSpinner year = new JSpinner(new SpinnerNumberModel(1900, 1900, 2500, 1));
     private MapEditor editor;
     private Province shown;
     private final Runnable onBack;
@@ -183,6 +183,7 @@ final class EditorPanel extends JPanel {
         }
         final long s = seed;
         status.setText(I18n.tr("editor.generating"));
+        newMapBtn.setEnabled(false);
         new SwingWorker<MapEditor, Void>() {
             @Override
             protected MapEditor doInBackground() {
@@ -195,10 +196,15 @@ final class EditorPanel extends JPanel {
                     editor = get();
                     map.setGame(editor.game);
                     map.frame();
+                    nationList.clearSelection();
+                    listedNations = -1;
+                    listedProvinces = -1;
                     refreshList();
                     status.setText(" ");
                 } catch (Exception ex) {
                     status.setText(String.valueOf(ex.getCause()));
+                } finally {
+                    newMapBtn.setEnabled(true);
                 }
             }
         }.execute();

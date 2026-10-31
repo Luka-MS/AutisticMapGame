@@ -88,10 +88,19 @@ final class PolicyTab implements NationTab {
         apply.setEnabled(wait == 0);
         if (synced != me) {
             synced = me;
+            syncedTaxes = me.taxes;
+            syncedDraft = me.conscription;
             taxesBox.setSelectedItem(me.taxes);
             draftBox.setSelectedItem(me.conscription);
+        } else {
+            if (syncedTaxes != me.taxes) taxesBox.setSelectedItem(me.taxes);
+            if (syncedDraft != me.conscription) draftBox.setSelectedItem(me.conscription);
+            syncedTaxes = me.taxes;
+            syncedDraft = me.conscription;
         }
     }
 
     private Country synced;
+    private Policy.Taxes syncedTaxes;
+    private Policy.Conscription syncedDraft;
 }
