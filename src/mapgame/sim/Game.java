@@ -14,6 +14,7 @@ import java.util.Random;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
+import mapgame.audio.Synth;
 import mapgame.i18n.I18n;
 import mapgame.model.Army;
 import mapgame.model.ArmyGroup;
@@ -134,6 +135,20 @@ public final class Game {
     public record Event(int day, String text, Province where) {
     }
 
+    /** Like {@link #report(String, Province, Country...)} and also plays a sound cue when the player is involved. */
+    public void report(Synth.Cue cue, String msg, Province where, Country... involved) {
+        report(msg, where, involved);
+        for (Country c : involved) {
+            if (c != null && c == player) {
+                cueSink.accept(cue);
+                return;
+            }
+        }
+    }
+
+    /** Receives the sounds to play (the user interface sets it). */
+    public Consumer<Synth.Cue> cueSink = c -> { };
+
     public static final int MAX_EVENTS = 300;
     public final List<Event> events = new ArrayList<>();
     public Consumer<Event> eventSink = e -> { };
@@ -194,7 +209,7 @@ public final class Game {
         if (atWar(a, b)) {
             if (!total || isTotalWar(a, b)) return false;
             totalWars.add(key(a, b));
-            report(I18n.tr("war.escalated", a.displayName(), b.displayName()), null, a, b);
+            report(Synth.Cue.WAR, I18n.tr("war.escalated", a.displayName(), b.displayName()), null, a, b);
             return true;
         }
         wars.put(key(a, b), day);
@@ -207,7 +222,7 @@ public final class Game {
             totalWars.add(key(a, b));
             totalWarsDeclared++;
         }
-        report(I18n.tr(total ? "war.declared.total" : "war.declared", a.displayName(), b.displayName()), null, a, b);
+        report(Synth.Cue.WAR, I18n.tr(total ? "war.declared.total" : "war.declared", a.displayName(), b.displayName()), null, a, b);
         if (callAllies) {
             callToArms(a, b);
             callGuarantors(a, b);
@@ -470,7 +485,7 @@ public final class Game {
         b.truceUntil = Math.max(b.truceUntil, day + TRUCE_DAYS);
         String outcome = payer != null ? " " + I18n.tr("peace.tribute", payer.displayName(), paid)
                 : moved == 0 ? "" : " " + I18n.tr("peace.moved", moved);
-        report(I18n.tr("peace.made", a.displayName(), b.displayName()) + outcome, null, a, b);
+        report(Synth.Cue.PEACE, I18n.tr("peace.made", a.displayName(), b.displayName()) + outcome, null, a, b);
         evictArmies();
         checkElimination(a);
         checkElimination(b);
@@ -651,7 +666,7 @@ public final class Game {
         c.tech[f.ordinal()]++;
         c.researchProgress = 0;
         c.researching = null;
-        report(I18n.tr("tech.done", c.displayName(), f.label(), c.techLevel(f)), null, c);
+        report(Synth.Cue.GOOD, I18n.tr("tech.done", c.displayName(), f.label(), c.techLevel(f)), null, c);
     }
 
     /** AI research: military first while at war, otherwise economy and administration. */
@@ -915,7 +930,7 @@ public final class Game {
             if (p.owner == null) continue;
             if (p.building != null && day >= p.buildDone) {
                 p.buildings[p.building.ordinal()]++;
-                if (p.owner == player) report(I18n.tr("building.done", p.building.label(), p.name), p, p.owner);
+                if (p.owner == player) report(Synth.Cue.GOOD, I18n.tr("building.done", p.building.label(), p.name), p, p.owner);
                 p.building = null;
             }
             if (p.controller == p.owner) {
@@ -935,7 +950,7 @@ public final class Game {
                 p.controller = p.owner;
                 p.unrest = 0;
                 mapDirty = true;
-                report(I18n.tr("rebels.free", p.name, p.owner.displayName(), holder.displayName()), p, p.owner, holder);
+                report(p.owner == player ? Synth.Cue.GOOD : Synth.Cue.BAD, I18n.tr("rebels.free", p.name, p.owner.displayName(), holder.displayName()), p, p.owner, holder);
             }
         }
     }
@@ -1145,9 +1160,9 @@ public final class Game {
         boolean playerInvolved = a.owner == player;
         if (best == null || a.strength <= 0) {
             a.dead = true;
-            if (playerInvolved) report(I18n.tr("army.destroyed", a.location.name), a.location, a.owner);
+            if (playerInvolved) report(Synth.Cue.BAD, I18n.tr("army.destroyed", a.location.name), a.location, a.owner);
         } else {
-            if (playerInvolved) report(I18n.tr("army.routed", a.location.name), a.location, a.owner);
+            if (playerInvolved) report(Synth.Cue.BAD, I18n.tr("army.routed", a.location.name), a.location, a.owner);
             a.moveTo(best);
             a.clearPath();
             a.morale = Math.max(a.morale, Army.BREAK_MORALE + 15);
@@ -1185,8 +1200,8 @@ public final class Game {
             Country victim = p.owner;
             p.controller = a.owner;
             mapDirty = true;
-            if (a.owner == player) report(I18n.tr("occupied.us", p.name, victim.displayName()), p, player);
-            else if (victim == player) report(I18n.tr("occupied.them", p.name, a.owner.displayName()), p, player);
+            if (a.owner == player) report(Synth.Cue.GOOD, I18n.tr("occupied.us", p.name, victim.displayName()), p, player);
+            else if (victim == player) report(Synth.Cue.BAD, I18n.tr("occupied.them", p.name, a.owner.displayName()), p, player);
             if (victim.capital == p && victim.alive) report(I18n.tr("capital.fallen", victim.displayName(), p.name, a.owner.displayName()), p, victim, a.owner);
             checkElimination(victim);
         }

@@ -46,6 +46,7 @@ public final class SelfTest {
         run("mods", SelfTest::mods);
         run("navy", SelfTest::navy);
         run("map editor", SelfTest::mapEditor);
+        run("sound", SelfTest::sounds);
         run("events and decisions", SelfTest::events);
         run("language files", SelfTest::languages);
         run("save and load", SelfTest::saveLoad);
@@ -606,6 +607,35 @@ public final class SelfTest {
         check(again.name.equals("Port Atlantis") && again.population == 123_456, "the scenario recreates names and population");
         check(g.world.countries.stream().anyMatch(c -> c.alive && c.name.equals("Renamed Land")), "the scenario recreates renamed nations");
         for (int i = 0; i < 100; i++) g.tickDay();
+    }
+
+    private static void sounds() {
+        for (mapgame.audio.Synth.Cue cue : mapgame.audio.Synth.Cue.values()) {
+            byte[] pcm = mapgame.audio.Synth.effect(cue);
+            int peak = 0;
+            for (int i = 0; i + 1 < pcm.length; i += 2) peak = Math.max(peak, Math.abs((short) ((pcm[i] & 0xFF) | (pcm[i + 1] << 8))));
+            check(pcm.length > 5000 && peak > 5000 && peak < 32767, "the " + cue + " sound is audible and does not clip (peak " + peak + ")");
+        }
+        byte[] music = mapgame.audio.Synth.music();
+        check(music.length == (int) (mapgame.audio.Synth.CHORD_SECONDS * mapgame.audio.Synth.CHORDS * mapgame.audio.Synth.RATE) * 2, "the music loop has the expected length");
+        Game g = newGame();
+        java.util.List<mapgame.audio.Synth.Cue> heard = new ArrayList<>();
+        g.cueSink = heard::add;
+        Province[] b = border(g);
+        g.player = b[0].owner;
+        g.declareWar(b[0].owner, b[1].owner);
+        check(heard.contains(mapgame.audio.Synth.Cue.WAR), "a war involving the player plays the war cue");
+        g.makePeace(b[0].owner, b[1].owner);
+        check(heard.contains(mapgame.audio.Synth.Cue.PEACE), "peace plays the peace cue");
+        int before = heard.size();
+        Country x = null, y = null;
+        for (Country c : g.world.countries) {
+            if (c == g.player || !c.alive) continue;
+            if (x == null) x = c;
+            else if (y == null) y = c;
+        }
+        g.declareWar(x, y);
+        check(heard.size() == before, "wars between other nations are silent");
     }
 
     private static void fogOfWar() {

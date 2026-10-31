@@ -47,6 +47,7 @@ import javax.swing.UIManager;
 import javax.swing.SwingWorker;
 import javax.swing.Timer;
 import javax.swing.filechooser.FileNameExtensionFilter;
+import mapgame.audio.SoundManager;
 import mapgame.i18n.I18n;
 import mapgame.model.Army;
 import mapgame.model.ArmyType;
@@ -71,7 +72,7 @@ public final class GameWindow extends JFrame {
     private final JButton startBtn = button(), pickBtn = button(), recruitBtn = button(), splitBtn = button(), mergeBtn = button(),
             fleetBtn = button(), embarkBtn = button(), unloadBtn = button(),
             groupsBtn = button(), warBtn = button(), totalWarBtn = button(), peaceBtn = button(), allianceBtn = button(), nationBtn = button(),
-            menuBtn = button(), saveBtn = button(), loadBtn = button(), modeBtn = button(), fogBtn = button();
+            menuBtn = button(), saveBtn = button(), loadBtn = button(), modeBtn = button(), fogBtn = button(), soundBtn = button();
     private final List<JToggleButton> speedBtns = new ArrayList<>();
     private JSplitPane sideSplit;
     private final ArmyGroupDialog groupDialog;
@@ -82,6 +83,7 @@ public final class GameWindow extends JFrame {
     private final MainMenuPanel menu;
     private final EditorPanel editorPanel = new EditorPanel(this::showMenu);
     private final JTabbedPane logTabs = new JTabbedPane();
+    private final SoundManager sound = new SoundManager();
     private final JComboBox<ArmyType> typeBox = new JComboBox<>(ArmyType.values());
     private final DefaultListModel<Game.Event> eventModel = new DefaultListModel<>();
     private final JList<Game.Event> eventList = new JList<>(eventModel);
@@ -159,6 +161,7 @@ public final class GameWindow extends JFrame {
         loadBtn.addActionListener(e -> loadWithChooser());
         modeBtn.addActionListener(e -> toggleMode());
         fogBtn.addActionListener(e -> toggleFog());
+        soundBtn.addActionListener(e -> cycleSound());
         groupsBtn.addActionListener(e -> showGroups());
         nationBtn.addActionListener(e -> showNation(null));
         recruitBtn.addActionListener(e -> {
@@ -273,6 +276,7 @@ public final class GameWindow extends JFrame {
         eventModel.clear();
         unreadEvents = 0;
         game.decisions = this::askDecision;
+        game.cueSink = sound::play;
         game.eventSink = ev -> {
             eventModel.add(0, ev);
             if (eventModel.size() > Game.MAX_EVENTS) eventModel.removeElementAt(eventModel.size() - 1);
@@ -485,6 +489,8 @@ public final class GameWindow extends JFrame {
         head.add(left(modeBtn));
         head.add(Box.createVerticalStrut(4));
         head.add(left(fogBtn));
+        head.add(Box.createVerticalStrut(4));
+        head.add(left(soundBtn));
         head.add(Box.createVerticalStrut(6));
         head.add(scroll(status, 100));
 
@@ -554,6 +560,7 @@ public final class GameWindow extends JFrame {
         }
         bind("M", this::toggleMode);
         bind("F", this::toggleFog);
+        bind("O", this::cycleSound);
         bind("X", this::splitSelected);
         bind("E", this::embarkSelected);
         bind("U", this::unloadSelected);
@@ -624,6 +631,7 @@ public final class GameWindow extends JFrame {
         saveBtn.setText(I18n.tr("btn.save"));
         loadBtn.setText(I18n.tr("btn.load"));
         updateModeText();
+        updateSoundText();
         updateTabTitles();
         typeBox.repaint();
         eventList.repaint();
@@ -654,6 +662,15 @@ public final class GameWindow extends JFrame {
 
     private void updateModeText() {
         modeBtn.setText(I18n.tr("btn.mode", map.mode().label()));
+    }
+
+    private void cycleSound() {
+        sound.setMode(sound.mode().next());
+        updateSoundText();
+    }
+
+    private void updateSoundText() {
+        soundBtn.setText(I18n.tr("btn.sound", I18n.tr("sound." + sound.mode().name())));
     }
 
     private void toggleFog() {

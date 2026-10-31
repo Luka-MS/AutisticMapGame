@@ -242,8 +242,8 @@ public final class Navy {
         }
         f.cargo.clear();
         String where = f.location.isLand() ? f.location.name : I18n.tr("fleet.sea");
-        if (lost > 0) g.report(I18n.tr("fleet.sunk.cargo", where, lost), f.location, f.owner);
-        else g.report(I18n.tr("fleet.sunk", where), f.location, f.owner);
+        if (lost > 0) g.report(mapgame.audio.Synth.Cue.BAD, I18n.tr("fleet.sunk.cargo", where, lost), f.location, f.owner);
+        else g.report(mapgame.audio.Synth.Cue.BAD, I18n.tr("fleet.sunk", where), f.location, f.owner);
     }
 
     /** A coastal province is blockaded while an enemy fleet lies in an adjacent sea and no defending fleet is there. */
